@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 type VercelRequest = {
   method?: string;
 };
@@ -13,6 +11,19 @@ type VercelResponse = {
 
 const figmaAuthorizeUrl = "https://www.figma.com/oauth";
 const defaultScopes = "file_comments:read";
+
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
+const createOAuthState = () => {
+  const stateBytes = new Uint8Array(24);
+  globalThis.crypto.getRandomValues(stateBytes);
+
+  return Array.from(stateBytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
 
 export default function handler(request: VercelRequest, response: VercelResponse) {
   if (request.method && request.method !== "GET") {
@@ -31,7 +42,7 @@ export default function handler(request: VercelRequest, response: VercelResponse
     return;
   }
 
-  const state = randomBytes(24).toString("hex");
+  const state = createOAuthState();
   const secureCookie = process.env.NODE_ENV === "production" ? "; Secure" : "";
 
   response.setHeader(

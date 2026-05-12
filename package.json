@@ -1,6 +1,7 @@
 {
   "name": "feedback-window",
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build"

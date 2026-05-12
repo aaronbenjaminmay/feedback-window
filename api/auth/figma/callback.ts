@@ -18,6 +18,16 @@ type VercelResponse = {
 
 const figmaTokenUrl = "https://api.figma.com/v1/oauth/token";
 
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
+declare const Buffer: {
+  from: (value: string) => {
+    toString: (encoding: "base64") => string;
+  };
+};
+
 const getQueryValue = (value: string | string[] | undefined) => {
   return Array.isArray(value) ? value[0] || "" : value || "";
 };
