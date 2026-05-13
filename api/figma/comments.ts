@@ -32,9 +32,10 @@ type FigmaFileResponse = {
 type FigmaComment = {
   id?: string;
   client_meta?: unknown;
+  node_id?: string;
+  nodeId?: string;
   pageName?: string;
   commentUrl?: string;
-  nodeId?: string;
 };
 
 type FigmaCommentsResponse = {
@@ -70,12 +71,24 @@ const setCorsHeaders = (request: VercelRequest, response: VercelResponse) => {
   response.setHeader("Vary", "Origin");
 };
 
+const normalizeNodeIdForLookup = (nodeId: string) => {
+  return nodeId.trim().replace(/-/g, ":");
+};
+
+const formatNodeIdForUrl = (nodeId: string) => {
+  return normalizeNodeIdForLookup(nodeId).replace(/:/g, "-");
+};
+
+const isLikelyNodeId = (value: string) => {
+  return /^\d+[:|-]\d+/.test(value.trim());
+};
+
 const buildNodePageMap = (documentNode: FigmaNode | undefined) => {
   const nodePageMap = new Map<string, string>();
 
   const mapCanvasSubtree = (node: FigmaNode, pageName: string) => {
     if (node.id) {
-      nodePageMap.set(node.id, pageName);
+      nodePageMap.set(normalizeNodeIdForLookup(node.id), pageName);
     }
 
     node.children?.forEach((child) => mapCanvasSubtree(child, pageName));
@@ -99,27 +112,103 @@ const buildNodePageMap = (documentNode: FigmaNode | undefined) => {
   return nodePageMap;
 };
 
-const extractNodeId = (clientMeta: unknown) => {
-  if (!clientMeta || typeof clientMeta !== "object") {
+const extractNodeIdFromValue = (value: unknown): string => {
+  if (!value) {
     return "";
   }
 
-  const metadata = clientMeta as Record<string, unknown>;
-  const nodeId = metadata.node_id || metadata.nodeId;
+  if (typeof value === "string") {
+    return isLikelyNodeId(value) ? normalizeNodeIdForLookup(value) : "";
+  }
 
-  return typeof nodeId === "string" ? nodeId : "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nestedNodeId = extractNodeIdFromValue(item);
+
+      if (nestedNodeId) {
+        return nestedNodeId;
+      }
+    }
+
+    return "";
+  }
+
+  if (typeof value !== "object") {
+    return "";
+  }
+
+  const metadata = value as Record<string, unknown>;
+  const directNodeId =
+    metadata.node_id ||
+    metadata.nodeId ||
+    metadata.node ||
+    metadata.id ||
+    metadata.guid;
+
+  if (typeof directNodeId === "string" && isLikelyNodeId(directNodeId)) {
+    return normalizeNodeIdForLookup(directNodeId);
+  }
+
+  if (directNodeId && typeof directNodeId === "object") {
+    const nestedNodeId = extractNodeIdFromValue(directNodeId);
+
+    if (nestedNodeId) {
+      return nestedNodeId;
+    }
+  }
+
+  const priorityFields = [
+    metadata.selection,
+    metadata.selected,
+    metadata.selections,
+    metadata.nodes,
+    metadata.nodeIds,
+    metadata.region
+  ];
+
+  for (const field of priorityFields) {
+    const nestedNodeId = extractNodeIdFromValue(field);
+
+    if (nestedNodeId) {
+      return nestedNodeId;
+    }
+  }
+
+  for (const field of Object.values(metadata)) {
+    const nestedNodeId = extractNodeIdFromValue(field);
+
+    if (nestedNodeId) {
+      return nestedNodeId;
+    }
+  }
+
+  return "";
+};
+
+const extractNodeId = (comment: FigmaComment) => {
+  return (
+    extractNodeIdFromValue(comment.client_meta) ||
+    extractNodeIdFromValue(comment.node_id) ||
+    extractNodeIdFromValue(comment.nodeId)
+  );
 };
 
 const buildCommentUrl = (fileKey: string, nodeId: string, commentId: string) => {
-  if (!nodeId || !commentId) {
+  if (!commentId) {
     return "";
+  }
+
+  if (!nodeId) {
+    return `https://www.figma.com/file/${encodeURIComponent(
+      fileKey
+    )}?comment-id=${encodeURIComponent(commentId)}`;
   }
 
   return `https://www.figma.com/file/${encodeURIComponent(
     fileKey
-  )}?node-id=${encodeURIComponent(nodeId)}&comment-id=${encodeURIComponent(
-    commentId
-  )}`;
+  )}?node-id=${encodeURIComponent(
+    formatNodeIdForUrl(nodeId)
+  )}&comment-id=${encodeURIComponent(commentId)}`;
 };
 
 const enrichCommentsWithLocation = (
@@ -139,12 +228,20 @@ const enrichCommentsWithLocation = (
 
   return {
     ...body,
-    comments: body.comments.map((comment) => {
-      const nodeId = extractNodeId(comment.client_meta);
+    comments: body.comments.map((comment, index) => {
+      const nodeId = extractNodeId(comment);
       const pageName = nodeId
         ? nodePageMap.get(nodeId) || "Unknown page"
         : "Unknown page";
       const commentUrl = buildCommentUrl(fileKey, nodeId, comment.id || "");
+
+      if (index < 10) {
+        console.log("Figma comment location metadata", {
+          commentId: comment.id || "",
+          client_meta: comment.client_meta ?? null,
+          extractedNodeId: nodeId
+        });
+      }
 
       return {
         ...comment,
