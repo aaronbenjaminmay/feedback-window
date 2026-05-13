@@ -199,16 +199,16 @@ const buildCommentUrl = (fileKey: string, nodeId: string, commentId: string) => 
   }
 
   if (!nodeId) {
-    return `https://www.figma.com/file/${encodeURIComponent(
+    return `https://www.figma.com/design/${encodeURIComponent(
       fileKey
-    )}?comment-id=${encodeURIComponent(commentId)}`;
+    )}#${encodeURIComponent(commentId)}`;
   }
 
-  return `https://www.figma.com/file/${encodeURIComponent(
+  return `https://www.figma.com/design/${encodeURIComponent(
     fileKey
   )}?node-id=${encodeURIComponent(
     formatNodeIdForUrl(nodeId)
-  )}&comment-id=${encodeURIComponent(commentId)}`;
+  )}#${encodeURIComponent(commentId)}`;
 };
 
 const enrichCommentsWithLocation = (
