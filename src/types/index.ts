@@ -19,6 +19,9 @@ export type Task = {
   priority: "low" | "medium" | "high";
   assignee: string;
   intakeDecision: "accepted" | "accepted-late" | "deferred-late";
+  pageName?: string;
+  commentUrl?: string;
+  nodeId?: string;
 };
 
 export type CommentItem = {
@@ -28,6 +31,9 @@ export type CommentItem = {
   handle?: string;
   message: string;
   createdAt: string;
+  pageName?: string;
+  commentUrl?: string;
+  nodeId?: string;
 };
 
 export type FeedbackSettings = {

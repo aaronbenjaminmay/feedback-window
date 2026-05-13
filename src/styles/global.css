@@ -432,6 +432,21 @@ button:disabled:hover {
   line-height: 1.35;
 }
 
+.source-link {
+  display: inline-block;
+  margin-top: 5px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.source-link:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
 .comment-date {
   flex: 0 0 auto;
   text-align: right;

@@ -51,6 +51,9 @@ type FigmaApiComment = {
   id?: string;
   message?: string;
   created_at?: string;
+  pageName?: string;
+  commentUrl?: string;
+  nodeId?: string;
   author?: {
     handle?: string;
     name?: string;
@@ -301,6 +304,8 @@ const buildTasksCsv = (tasksToExport: Task[]) => {
     "Original Commenter",
     "Email",
     "Comment Date",
+    "Page Name",
+    "Comment URL",
     "Status",
     "Priority",
     "Assignee",
@@ -314,6 +319,8 @@ const buildTasksCsv = (tasksToExport: Task[]) => {
     task.authorName,
     task.email,
     task.createdAt,
+    task.pageName || "",
+    task.commentUrl || "",
     task.status,
     task.priority,
     task.assignee,
@@ -336,6 +343,9 @@ const createTaskFromComment = (
     authorName: comment.authorName,
     email: comment.email,
     createdAt: comment.createdAt,
+    pageName: comment.pageName,
+    commentUrl: comment.commentUrl,
+    nodeId: comment.nodeId,
     status: intakeDecision === "deferred-late" ? "deferred" : "new",
     priority: "medium",
     assignee: "",
@@ -564,7 +574,10 @@ export default function App() {
             email: author?.email || "",
             handle: author?.handle,
             message: comment.message || "",
-            createdAt: comment.created_at || new Date().toISOString()
+            createdAt: comment.created_at || new Date().toISOString(),
+            pageName: comment.pageName || "Unknown page",
+            commentUrl: comment.commentUrl,
+            nodeId: comment.nodeId
           };
         }
       );
@@ -1007,6 +1020,17 @@ export default function App() {
                         <h3>{comment.authorName}</h3>
                         <p>{comment.email || "No email available"}</p>
                         {comment.handle && <p>Handle: {comment.handle}</p>}
+                        {comment.pageName && <p>Page: {comment.pageName}</p>}
+                        {comment.commentUrl && (
+                          <a
+                            className="source-link"
+                            href={comment.commentUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            View in Figma
+                          </a>
+                        )}
                       </div>
                       <p className="comment-date">
                         {formatCommentDate(comment.createdAt)}
@@ -1196,6 +1220,19 @@ export default function App() {
                     <p className="task-commenter">
                       Original commenter: {task.authorName} ({task.email})
                     </p>
+                    {task.pageName && (
+                      <p className="task-commenter">Page: {task.pageName}</p>
+                    )}
+                    {task.commentUrl && (
+                      <a
+                        className="source-link"
+                        href={task.commentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View in Figma
+                      </a>
+                    )}
 
                     <div className="badges">
                       <span className={`badge intake-${task.intakeDecision}`}>
