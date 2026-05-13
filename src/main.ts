@@ -1,4 +1,4 @@
-figma.showUI(__html__, { width: 400, height: 600 });
+figma.showUI(__html__, { width: 960, height: 720 });
 
 const figmaRuntime = figma as typeof figma & {
   fileKey?: string;

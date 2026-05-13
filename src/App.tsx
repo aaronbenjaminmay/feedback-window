@@ -700,41 +700,46 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <h1>Feedback Window</h1>
-        <p>Set the review window and agency team rules.</p>
-      </header>
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <h1>Feedback Window</h1>
+          <p>Review governance</p>
+        </div>
 
-      <nav className="tabs" aria-label="Feedback Window sections">
-        <button
-          className={activeTab === "dashboard" ? "tab active" : "tab"}
-          type="button"
-          onClick={() => openTab("dashboard")}
-        >
-          Dashboard
-        </button>
-        <button
-          className={activeTab === "setup" ? "tab active" : "tab"}
-          type="button"
-          onClick={() => openTab("setup")}
-        >
-          Setup
-        </button>
-        <button
-          className={activeTab === "comments" ? "tab active" : "tab"}
-          type="button"
-          onClick={() => openTab("comments")}
-        >
-          Comments
-        </button>
-        <button
-          className={activeTab === "tasks" ? "tab active" : "tab"}
-          type="button"
-          onClick={() => openTab("tasks")}
-        >
-          Tasks
-        </button>
-      </nav>
+        <nav className="sidebar-nav" aria-label="Feedback Window sections">
+          <button
+            className={activeTab === "dashboard" ? "nav-item active" : "nav-item"}
+            type="button"
+            onClick={() => openTab("dashboard")}
+          >
+            Dashboard
+          </button>
+          <button
+            className={activeTab === "setup" ? "nav-item active" : "nav-item"}
+            type="button"
+            onClick={() => openTab("setup")}
+          >
+            Setup
+          </button>
+          <button
+            className={activeTab === "comments" ? "nav-item active" : "nav-item"}
+            type="button"
+            onClick={() => openTab("comments")}
+          >
+            Comments
+          </button>
+          <button
+            className={activeTab === "tasks" ? "nav-item active" : "nav-item"}
+            type="button"
+            onClick={() => openTab("tasks")}
+          >
+            Tasks
+          </button>
+        </nav>
+      </aside>
+
+      <main className="main-content">
+        <div className="content-panel">
 
       {activeTab === "dashboard" && (
         <section className="dashboard-view">
@@ -1295,6 +1300,8 @@ export default function App() {
           )}
         </section>
       )}
+        </div>
+      </main>
     </div>
   );
 }
