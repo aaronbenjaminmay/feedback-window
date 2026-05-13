@@ -41,10 +41,17 @@ type FigmaComment = {
   debugLookupNodeId?: string;
   debugPageMapHasNode?: boolean;
   debugPageMapSampleKeys?: string[];
+  debugFileTreeStatus?: number | string;
+  debugFileTreeError?: unknown;
 };
 
 type FigmaCommentsResponse = {
   comments?: FigmaComment[];
+};
+
+type FileTreeDebug = {
+  status?: number | string;
+  error?: unknown;
 };
 
 const getQueryValue = (value: string | string[] | undefined) => {
@@ -88,8 +95,9 @@ const isLikelyNodeId = (value: string) => {
   return /^\d+[:|-]\d+/.test(value.trim());
 };
 
-const buildNodePageMap = (documentNode: FigmaNode | undefined) => {
+const buildNodePageMap = (fileBody: FigmaFileResponse | null) => {
   const nodePageMap = new Map<string, string>();
+  const documentNode = fileBody?.document;
 
   const mapCanvasSubtree = (node: FigmaNode, pageName: string) => {
     if (node.id) {
@@ -99,20 +107,20 @@ const buildNodePageMap = (documentNode: FigmaNode | undefined) => {
     node.children?.forEach((child) => mapCanvasSubtree(child, pageName));
   };
 
-  const visit = (node: FigmaNode | undefined) => {
-    if (!node) {
-      return;
-    }
+  if (!documentNode) {
+    return nodePageMap;
+  }
 
-    if (node.type === "CANVAS") {
-      mapCanvasSubtree(node, node.name || "Unknown page");
-      return;
-    }
+  if (documentNode.type === "CANVAS") {
+    mapCanvasSubtree(documentNode, documentNode.name || "Unknown page");
+    return nodePageMap;
+  }
 
-    node.children?.forEach(visit);
-  };
-
-  visit(documentNode);
+  documentNode.children
+    ?.filter((node) => node.type === "CANVAS")
+    .forEach((canvasNode) => {
+      mapCanvasSubtree(canvasNode, canvasNode.name || "Unknown page");
+    });
 
   return nodePageMap;
 };
@@ -219,7 +227,8 @@ const buildCommentUrl = (fileKey: string, nodeId: string, commentId: string) => 
 const enrichCommentsWithLocation = (
   commentsBody: unknown,
   nodePageMap: Map<string, string>,
-  fileKey: string
+  fileKey: string,
+  fileTreeDebug: FileTreeDebug
 ) => {
   if (!commentsBody || typeof commentsBody !== "object") {
     return commentsBody;
@@ -258,7 +267,9 @@ const enrichCommentsWithLocation = (
               debugPageMapSampleKeys: Array.from(nodePageMap.keys()).slice(
                 0,
                 10
-              )
+              ),
+              debugFileTreeStatus: fileTreeDebug.status,
+              debugFileTreeError: fileTreeDebug.error
             }
           : {};
 
@@ -324,6 +335,7 @@ export default async function handler(
     }
 
     let nodePageMap = new Map<string, string>();
+    const fileTreeDebug: FileTreeDebug = {};
 
     try {
       const fileResponse = await fetch(
@@ -338,16 +350,30 @@ export default async function handler(
         fileResponse
       )) as FigmaFileResponse | null;
 
+      fileTreeDebug.status = fileResponse.status;
+
       if (fileResponse.ok) {
-        nodePageMap = buildNodePageMap(fileBody?.document);
+        nodePageMap = buildNodePageMap(fileBody);
+      } else {
+        fileTreeDebug.error = fileBody;
       }
-    } catch {
+    } catch (error) {
       nodePageMap = new Map<string, string>();
+      fileTreeDebug.status = "fetch-error";
+      fileTreeDebug.error =
+        error instanceof Error ? error.message : "Unknown file tree fetch error.";
     }
 
     response
       .status(commentsResponse.status)
-      .json(enrichCommentsWithLocation(commentsBody, nodePageMap, fileKey));
+      .json(
+        enrichCommentsWithLocation(
+          commentsBody,
+          nodePageMap,
+          fileKey,
+          fileTreeDebug
+        )
+      );
   } catch {
     response.status(502).json({
       error: "Could not fetch comments from Figma."

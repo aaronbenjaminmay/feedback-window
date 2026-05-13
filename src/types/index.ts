@@ -39,6 +39,8 @@ export type CommentItem = {
   debugLookupNodeId?: string;
   debugPageMapHasNode?: boolean;
   debugPageMapSampleKeys?: string[];
+  debugFileTreeStatus?: number | string;
+  debugFileTreeError?: unknown;
 };
 
 export type FeedbackSettings = {

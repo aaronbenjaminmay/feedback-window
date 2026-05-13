@@ -59,6 +59,8 @@ type FigmaApiComment = {
   debugLookupNodeId?: string;
   debugPageMapHasNode?: boolean;
   debugPageMapSampleKeys?: string[];
+  debugFileTreeStatus?: number | string;
+  debugFileTreeError?: unknown;
   author?: {
     handle?: string;
     name?: string;
@@ -686,7 +688,9 @@ export default function App() {
             debugExtractedNodeId: comment.debugExtractedNodeId,
             debugLookupNodeId: comment.debugLookupNodeId,
             debugPageMapHasNode: comment.debugPageMapHasNode,
-            debugPageMapSampleKeys: comment.debugPageMapSampleKeys
+            debugPageMapSampleKeys: comment.debugPageMapSampleKeys,
+            debugFileTreeStatus: comment.debugFileTreeStatus,
+            debugFileTreeError: comment.debugFileTreeError
           };
         }
       );
@@ -1178,6 +1182,15 @@ export default function App() {
                               Debug page map sample keys:{" "}
                               {comment.debugPageMapSampleKeys?.join(", ") ||
                                 "(none)"}
+                            </p>
+                            <p>
+                              Debug file tree status:{" "}
+                              {comment.debugFileTreeStatus ??
+                                "(not included for this comment)"}
+                            </p>
+                            <p>
+                              Debug file tree error:{" "}
+                              {formatDebugValue(comment.debugFileTreeError)}
                             </p>
                           </div>
                         )}
