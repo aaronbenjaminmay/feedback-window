@@ -363,7 +363,6 @@ export default function App() {
   const [taskSearch, setTaskSearch] = useState("");
   const [taskSort, setTaskSort] = useState<TaskSort>("newest");
   const [saveMessage, setSaveMessage] = useState("");
-  const [isAdvancedResetOpen, setIsAdvancedResetOpen] = useState(false);
   const [isCommentFiltersOpen, setIsCommentFiltersOpen] = useState(false);
   const [isTaskFiltersOpen, setIsTaskFiltersOpen] = useState(false);
 
@@ -834,28 +833,23 @@ export default function App() {
 
           {saveMessage && <p className="save-message">{saveMessage}</p>}
 
-          <section className="accordion-card">
-            <button
-              className="accordion-trigger"
-              type="button"
-              onClick={() => setIsAdvancedResetOpen((isOpen) => !isOpen)}
-              aria-expanded={isAdvancedResetOpen}
-            >
-              <span>Advanced reset options</span>
-              <strong>{isAdvancedResetOpen ? "Hide" : "Show"}</strong>
-            </button>
+          <section className="settings-reset-section">
+            <div className="section-summary">
+              <h2>Settings reset</h2>
+              <p>
+                Use this only if you want to clear the saved agency team
+                members, feedback dates, and late feedback message for this
+                file.
+              </p>
+            </div>
 
-            {isAdvancedResetOpen && (
-              <div className="accordion-content">
-                <button
-                  className="secondary-button delete-button"
-                  type="button"
-                  onClick={clearSavedSettings}
-                >
-                  Clear Saved Settings
-                </button>
-              </div>
-            )}
+            <button
+              className="secondary-button delete-button reset-settings-button"
+              type="button"
+              onClick={clearSavedSettings}
+            >
+              Reset saved settings
+            </button>
           </section>
         </form>
       )}

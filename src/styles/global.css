@@ -202,6 +202,19 @@ button:disabled:hover {
   margin-top: 12px;
 }
 
+.settings-reset-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid #e5e9f0;
+  padding-top: 14px;
+  margin-top: 4px;
+}
+
+.reset-settings-button {
+  margin-top: 0;
+}
+
 .metadata-panel {
   display: flex;
   flex-direction: column;
