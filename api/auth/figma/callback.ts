@@ -41,6 +41,16 @@ const getCookie = (cookieHeader: string | undefined, name: string) => {
   return matchingCookie?.trim().slice(name.length + 1) || "";
 };
 
+const getMissingOAuthEnvVars = () => {
+  const requiredEnvVars = [
+    "FIGMA_CLIENT_ID",
+    "FIGMA_CLIENT_SECRET",
+    "FIGMA_REDIRECT_URI"
+  ];
+
+  return requiredEnvVars.filter((envVarName) => !process.env[envVarName]);
+};
+
 export default async function handler(
   request: VercelRequest,
   response: VercelResponse
@@ -78,17 +88,23 @@ export default async function handler(
     return;
   }
 
-  const clientId = process.env.FIGMA_CLIENT_ID;
-  const clientSecret = process.env.FIGMA_CLIENT_SECRET;
-  const redirectUri = process.env.FIGMA_REDIRECT_URI;
+  const missingEnvVars = getMissingOAuthEnvVars();
 
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (missingEnvVars.length > 0) {
     response.status(500).send(`
       <h1>Figma OAuth is not configured</h1>
-      <p>Set FIGMA_CLIENT_ID, FIGMA_CLIENT_SECRET, and FIGMA_REDIRECT_URI in Vercel.</p>
+      <p>The callback is missing required Vercel environment variables:</p>
+      <ul>
+        ${missingEnvVars.map((envVarName) => `<li>${envVarName}</li>`).join("")}
+      </ul>
+      <p>Set the missing values in Vercel, then redeploy the project.</p>
     `);
     return;
   }
+
+  const clientId = process.env.FIGMA_CLIENT_ID as string;
+  const clientSecret = process.env.FIGMA_CLIENT_SECRET as string;
+  const redirectUri = process.env.FIGMA_REDIRECT_URI as string;
 
   try {
     const tokenBody = new URLSearchParams({
