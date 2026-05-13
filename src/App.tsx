@@ -363,6 +363,9 @@ export default function App() {
   const [taskSearch, setTaskSearch] = useState("");
   const [taskSort, setTaskSort] = useState<TaskSort>("newest");
   const [saveMessage, setSaveMessage] = useState("");
+  const [isAdvancedResetOpen, setIsAdvancedResetOpen] = useState(false);
+  const [isCommentFiltersOpen, setIsCommentFiltersOpen] = useState(false);
+  const [isTaskFiltersOpen, setIsTaskFiltersOpen] = useState(false);
 
   const loadSettings = () => {
     getSettings().then((savedSettings) => {
@@ -627,6 +630,20 @@ export default function App() {
 
   const classifiedComments = classifyComments(figmaComments, settings);
   const activeFileKey = currentFileKey || manualFileKey.trim();
+  const activeCommentFilterLabel =
+    commentFilterOptions.find((option) => option.value === commentFilter)
+      ?.label || "All comments";
+  const activeCommentSortLabel =
+    commentSort === "newest" ? "Newest first" : "Oldest first";
+  const activeTaskFilterLabel =
+    taskFilterOptions.find((option) => option.value === taskFilter)?.label ||
+    "All tasks";
+  const activeTaskSortLabel =
+    taskSort === "newest"
+      ? "Newest first"
+      : taskSort === "oldest"
+        ? "Oldest first"
+        : "Priority high to low";
   const visibleComments = filterAndSortComments(
     classifiedComments,
     commentFilter,
@@ -817,28 +834,28 @@ export default function App() {
 
           {saveMessage && <p className="save-message">{saveMessage}</p>}
 
-          <section className="utilities-card">
-            <div className="section-summary">
-              <h2>Settings / Utilities</h2>
-              <p>Reset saved settings or task data.</p>
-            </div>
+          <section className="accordion-card">
+            <button
+              className="accordion-trigger"
+              type="button"
+              onClick={() => setIsAdvancedResetOpen((isOpen) => !isOpen)}
+              aria-expanded={isAdvancedResetOpen}
+            >
+              <span>Advanced reset options</span>
+              <strong>{isAdvancedResetOpen ? "Hide" : "Show"}</strong>
+            </button>
 
-            <div className="utility-actions">
-              <button
-                className="secondary-button delete-button"
-                type="button"
-                onClick={clearSavedSettings}
-              >
-                Clear Saved Settings
-              </button>
-              <button
-                className="secondary-button delete-button"
-                type="button"
-                onClick={clearSavedTasks}
-              >
-                Clear Tasks
-              </button>
-            </div>
+            {isAdvancedResetOpen && (
+              <div className="accordion-content">
+                <button
+                  className="secondary-button delete-button"
+                  type="button"
+                  onClick={clearSavedSettings}
+                >
+                  Clear Saved Settings
+                </button>
+              </div>
+            )}
           </section>
         </form>
       )}
@@ -940,50 +957,66 @@ export default function App() {
             </div>
           </section>
 
-          <section className="comment-controls">
-            <label className="field">
-              <span>Filter</span>
-              <select
-                value={commentFilter}
-                onChange={(event) =>
-                  setCommentFilter(event.target.value as CommentFilter)
-                }
-              >
-                {commentFilterOptions.map((option) => (
-                  <option value={option.value} key={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <section className="accordion-card">
+            <button
+              className="accordion-trigger"
+              type="button"
+              onClick={() => setIsCommentFiltersOpen((isOpen) => !isOpen)}
+              aria-expanded={isCommentFiltersOpen}
+            >
+              <span>Filters & Sort</span>
+              <strong>
+                {activeCommentFilterLabel} · {activeCommentSortLabel}
+              </strong>
+            </button>
 
-            <label className="field">
-              <span>Search</span>
-              <input
-                type="search"
-                value={commentSearch}
-                onChange={(event) => setCommentSearch(event.target.value)}
-                placeholder="Search author, email, or message"
-              />
-            </label>
+            {isCommentFiltersOpen && (
+              <div className="accordion-content comment-controls">
+                <label className="field">
+                  <span>Filter</span>
+                  <select
+                    value={commentFilter}
+                    onChange={(event) =>
+                      setCommentFilter(event.target.value as CommentFilter)
+                    }
+                  >
+                    {commentFilterOptions.map((option) => (
+                      <option value={option.value} key={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <label className="field">
-              <span>Sort</span>
-              <select
-                value={commentSort}
-                onChange={(event) =>
-                  setCommentSort(event.target.value as CommentSort)
-                }
-              >
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
-              </select>
-            </label>
+                <label className="field">
+                  <span>Search</span>
+                  <input
+                    type="search"
+                    value={commentSearch}
+                    onChange={(event) => setCommentSearch(event.target.value)}
+                    placeholder="Search author, email, or message"
+                  />
+                </label>
 
-            <p className="comment-count">
-              Showing {visibleComments.length} of {classifiedComments.length}{" "}
-              comments
-            </p>
+                <label className="field">
+                  <span>Sort</span>
+                  <select
+                    value={commentSort}
+                    onChange={(event) =>
+                      setCommentSort(event.target.value as CommentSort)
+                    }
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                  </select>
+                </label>
+
+                <p className="comment-count">
+                  Showing {visibleComments.length} of {classifiedComments.length}{" "}
+                  comments
+                </p>
+              </div>
+            )}
           </section>
 
           <div className="comment-list">
@@ -1101,6 +1134,17 @@ export default function App() {
               Export CSV
             </button>
 
+            <div className="secondary-action-area">
+              <button
+                className="secondary-button delete-button"
+                type="button"
+                onClick={clearSavedTasks}
+                disabled={tasks.length === 0}
+              >
+                Clear All Tasks
+              </button>
+            </div>
+
             {tasks.length === 0 && (
               <p className="helper-text">
                 Create at least one task before exporting.
@@ -1108,48 +1152,66 @@ export default function App() {
             )}
           </div>
 
-          <section className="task-controls">
-            <label className="field">
-              <span>Filter</span>
-              <select
-                value={taskFilter}
-                onChange={(event) =>
-                  setTaskFilter(event.target.value as TaskFilter)
-                }
-              >
-                {taskFilterOptions.map((option) => (
-                  <option value={option.value} key={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <section className="accordion-card">
+            <button
+              className="accordion-trigger"
+              type="button"
+              onClick={() => setIsTaskFiltersOpen((isOpen) => !isOpen)}
+              aria-expanded={isTaskFiltersOpen}
+            >
+              <span>Filters & Sort</span>
+              <strong>
+                {activeTaskFilterLabel} · {activeTaskSortLabel}
+              </strong>
+            </button>
 
-            <label className="field">
-              <span>Search</span>
-              <input
-                type="search"
-                value={taskSearch}
-                onChange={(event) => setTaskSearch(event.target.value)}
-                placeholder="Search title, commenter, email, or assignee"
-              />
-            </label>
+            {isTaskFiltersOpen && (
+              <div className="accordion-content task-controls">
+                <label className="field">
+                  <span>Filter</span>
+                  <select
+                    value={taskFilter}
+                    onChange={(event) =>
+                      setTaskFilter(event.target.value as TaskFilter)
+                    }
+                  >
+                    {taskFilterOptions.map((option) => (
+                      <option value={option.value} key={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <label className="field">
-              <span>Sort</span>
-              <select
-                value={taskSort}
-                onChange={(event) => setTaskSort(event.target.value as TaskSort)}
-              >
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
-                <option value="priority-high">Priority high to low</option>
-              </select>
-            </label>
+                <label className="field">
+                  <span>Search</span>
+                  <input
+                    type="search"
+                    value={taskSearch}
+                    onChange={(event) => setTaskSearch(event.target.value)}
+                    placeholder="Search title, commenter, email, or assignee"
+                  />
+                </label>
 
-            <p className="task-count">
-              Showing {visibleTasks.length} of {tasks.length} tasks
-            </p>
+                <label className="field">
+                  <span>Sort</span>
+                  <select
+                    value={taskSort}
+                    onChange={(event) =>
+                      setTaskSort(event.target.value as TaskSort)
+                    }
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="priority-high">Priority high to low</option>
+                  </select>
+                </label>
+
+                <p className="task-count">
+                  Showing {visibleTasks.length} of {tasks.length} tasks
+                </p>
+              </div>
+            )}
           </section>
 
           {tasks.length === 0 ? (

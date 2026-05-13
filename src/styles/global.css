@@ -142,7 +142,13 @@ button:disabled:hover {
 }
 
 .delete-button {
+  border-color: #f3c7c7;
   color: #991b1b;
+  background: #ffffff;
+}
+
+.delete-button:hover {
+  background: #fff7f7;
 }
 
 .save-message {
@@ -161,7 +167,9 @@ button:disabled:hover {
 }
 
 .section-summary h2 {
-  margin: 0 0 4px;
+  margin: 0 0 5px;
+  border-left: 3px solid #1f2937;
+  padding-left: 8px;
   font-size: 16px;
   line-height: 1.3;
 }
@@ -185,24 +193,6 @@ button:disabled:hover {
   border-radius: 8px;
   padding: 12px;
   background: #ffffff;
-}
-
-.utilities-card {
-  border: 1px solid #d8dee8;
-  border-radius: 8px;
-  padding: 12px;
-  background: #ffffff;
-}
-
-.utility-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.utility-actions .secondary-button {
-  margin-top: 0;
 }
 
 .figma-comments-form {
@@ -257,15 +247,52 @@ button:disabled:hover {
   margin-top: 0;
 }
 
-.comment-controls,
-.task-controls {
+.accordion-card {
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.accordion-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  padding: 11px 12px;
+  color: #1f2937;
+  background: #ffffff;
+  text-align: left;
+}
+
+.accordion-trigger:hover {
+  background: #f3f5f8;
+}
+
+.accordion-trigger span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.accordion-trigger strong {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.accordion-content {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  border: 1px solid #d8dee8;
-  border-radius: 8px;
+  border-top: 1px solid #e5e9f0;
   padding: 12px;
-  background: #ffffff;
+}
+
+.comment-controls,
+.task-controls {
+  background: #fbfcfd;
 }
 
 .comment-count,
@@ -439,6 +466,15 @@ button:disabled:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.secondary-action-area {
+  border-top: 1px solid #e5e9f0;
+  padding-top: 8px;
+}
+
+.secondary-action-area .secondary-button {
+  margin-top: 0;
 }
 
 .helper-text {
