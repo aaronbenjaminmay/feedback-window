@@ -1,6 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
-  clearSettings,
   clearTasks,
   getSettings,
   getTasks,
@@ -585,20 +584,6 @@ export default function App() {
     }
   };
 
-  const clearSavedSettings = () => {
-    const confirmed = window.confirm(
-      "Clear saved settings and reset the setup form?"
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    clearSettings();
-    setSettings(defaultSettings);
-    setSaveMessage("");
-  };
-
   const clearSavedTasks = () => {
     const confirmed = window.confirm("Clear all saved tasks?");
 
@@ -837,25 +822,6 @@ export default function App() {
           <button type="submit">Save Settings</button>
 
           {saveMessage && <p className="save-message">{saveMessage}</p>}
-
-          <section className="settings-reset-section">
-            <div className="section-summary">
-              <h2>Settings reset</h2>
-              <p>
-                Use this only if you want to clear the saved agency team
-                members, feedback dates, and late feedback message for this
-                file.
-              </p>
-            </div>
-
-            <button
-              className="secondary-button delete-button reset-settings-button"
-              type="button"
-              onClick={clearSavedSettings}
-            >
-              Reset saved settings
-            </button>
-          </section>
         </form>
       )}
 

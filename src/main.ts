@@ -32,10 +32,6 @@ figma.ui.onmessage = async (msg) => {
     figma.ui.postMessage({ type: "tasks", data });
   }
 
-  if (msg.type === "clear-settings") {
-    figma.root.setPluginData("settings", "");
-  }
-
   if (msg.type === "clear-tasks") {
     figma.root.setPluginData("tasks", "");
   }

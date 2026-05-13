@@ -43,10 +43,6 @@ export const saveTasks = (data: Task[]) => {
   parent.postMessage({ pluginMessage: { type: "save-tasks", data } }, "*");
 };
 
-export const clearSettings = () => {
-  parent.postMessage({ pluginMessage: { type: "clear-settings" } }, "*");
-};
-
 export const clearTasks = () => {
   parent.postMessage({ pluginMessage: { type: "clear-tasks" } }, "*");
 };
