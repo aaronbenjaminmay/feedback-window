@@ -225,9 +225,11 @@ const filterAndSortComments = (
   comments: ClassifiedComment[],
   filter: CommentFilter,
   searchTerm: string,
+  pageTitleTerm: string,
   sort: CommentSort
 ) => {
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const normalizedPageTitleTerm = pageTitleTerm.trim().toLowerCase();
 
   return comments
     .filter((comment) => {
@@ -258,6 +260,15 @@ const filterAndSortComments = (
         .join(" ")
         .toLowerCase()
         .includes(normalizedSearchTerm);
+    })
+    .filter((comment) => {
+      if (!normalizedPageTitleTerm) {
+        return true;
+      }
+
+      return (comment.pageName || "")
+        .toLowerCase()
+        .includes(normalizedPageTitleTerm);
     })
     .sort((firstComment, secondComment) => {
       const firstTime = new Date(firstComment.createdAt).getTime();
@@ -402,6 +413,7 @@ export default function App() {
   const [figmaFetchError, setFigmaFetchError] = useState("");
   const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
   const [commentSearch, setCommentSearch] = useState("");
+  const [commentPageTitleFilter, setCommentPageTitleFilter] = useState("");
   const [commentSort, setCommentSort] = useState<CommentSort>("newest");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
   const [taskSearch, setTaskSearch] = useState("");
@@ -754,6 +766,7 @@ export default function App() {
     classifiedComments,
     commentFilter,
     commentSearch,
+    commentPageTitleFilter,
     commentSort
   );
   const visibleTasks = filterAndSortTasks(tasks, taskFilter, taskSearch, taskSort);
@@ -1104,6 +1117,18 @@ export default function App() {
                 </label>
 
                 <label className="field">
+                  <span>Page title</span>
+                  <input
+                    type="search"
+                    value={commentPageTitleFilter}
+                    onChange={(event) =>
+                      setCommentPageTitleFilter(event.target.value)
+                    }
+                    placeholder="Filter by page name"
+                  />
+                </label>
+
+                <label className="field">
                   <span>Sort</span>
                   <select
                     value={commentSort}
@@ -1145,7 +1170,7 @@ export default function App() {
                     <div className="comment-card-header">
                       <div>
                         <h3>{comment.authorName}</h3>
-                        <p>{comment.email || "No email available"}</p>
+                        {comment.email && <p>{comment.email}</p>}
                         {comment.handle && <p>Handle: {comment.handle}</p>}
                         {comment.pageName && <p>Page: {comment.pageName}</p>}
                         {comment.commentUrl && (
