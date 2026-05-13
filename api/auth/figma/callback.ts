@@ -1,3 +1,8 @@
+import {
+  createConnectionCode,
+  saveConnectionToken
+} from "../../lib/connectionStore.js";
+
 type VercelRequest = {
   method?: string;
   query: {
@@ -146,17 +151,21 @@ export default async function handler(
       return;
     }
 
-    const secureCookie = process.env.NODE_ENV === "production" ? "; Secure" : "";
     const maxAge = Math.max(60, Math.min(tokenData.expires_in || 3600, 3600));
+    const connectionCode = createConnectionCode();
+    const secureCookie = process.env.NODE_ENV === "production" ? "; Secure" : "";
 
-    response.setHeader("Set-Cookie", [
-      `figma_oauth_state=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secureCookie}`,
-      `figma_access_token=${tokenData.access_token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secureCookie}`
-    ]);
+    saveConnectionToken(connectionCode, tokenData.access_token, maxAge);
+    response.setHeader(
+      "Set-Cookie",
+      `figma_oauth_state=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secureCookie}`
+    );
 
     response.send(`
       <h1>Connected to Figma.</h1>
-      <p>You can return to the plugin.</p>
+      <p>Copy this code and paste it into the plugin.</p>
+      <p style="font-family: monospace; font-size: 28px; font-weight: 700;">${connectionCode}</p>
+      <p>This temporary prototype code expires in about ${Math.round(maxAge / 60)} minutes.</p>
     `);
   } catch {
     response.status(502).send(`

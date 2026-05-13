@@ -1,7 +1,11 @@
+import { getConnectionToken } from "../lib/connectionStore.js";
+
 type VercelRequest = {
   method?: string;
+  query: {
+    connectionId?: string | string[];
+  };
   headers: {
-    cookie?: string;
     origin?: string;
   };
 };
@@ -13,13 +17,8 @@ type VercelResponse = {
   end: () => void;
 };
 
-const getCookie = (cookieHeader: string | undefined, name: string) => {
-  const cookies = cookieHeader?.split(";") || [];
-  const matchingCookie = cookies.find((cookie) =>
-    cookie.trim().startsWith(`${name}=`)
-  );
-
-  return matchingCookie?.trim().slice(name.length + 1) || "";
+const getQueryValue = (value: string | string[] | undefined) => {
+  return Array.isArray(value) ? value[0] || "" : value || "";
 };
 
 const setCorsHeaders = (request: VercelRequest, response: VercelResponse) => {
@@ -63,7 +62,7 @@ export default async function handler(
     return;
   }
 
-  const token = getCookie(request.headers.cookie, "figma_access_token");
+  const token = getConnectionToken(getQueryValue(request.query.connectionId));
 
   if (!token) {
     response.status(401).json({ error: "Not connected to Figma." });

@@ -1,9 +1,12 @@
-import { hasConnectionToken } from "../lib/connectionStore.js";
+import {
+  hasConnectionToken,
+  normalizeConnectionCode
+} from "../lib/connectionStore.js";
 
 type VercelRequest = {
   method?: string;
   query: {
-    connectionId?: string | string[];
+    code?: string | string[];
   };
   headers: {
     origin?: string;
@@ -32,7 +35,10 @@ const setCorsHeaders = (request: VercelRequest, response: VercelResponse) => {
   response.setHeader("Vary", "Origin");
 };
 
-export default function handler(request: VercelRequest, response: VercelResponse) {
+export default function handler(
+  request: VercelRequest,
+  response: VercelResponse
+) {
   setCorsHeaders(request, response);
 
   if (request.method === "OPTIONS") {
@@ -45,9 +51,26 @@ export default function handler(request: VercelRequest, response: VercelResponse
     return;
   }
 
-  const connectionId = getQueryValue(request.query.connectionId);
+  const connectionCode = normalizeConnectionCode(getQueryValue(request.query.code));
 
-  response.json({
-    connected: Boolean(connectionId && hasConnectionToken(connectionId))
+  if (!connectionCode) {
+    response.status(400).json({
+      connected: false,
+      error: "Missing connection code."
+    });
+    return;
+  }
+
+  if (!hasConnectionToken(connectionCode)) {
+    response.status(404).json({
+      connected: false,
+      error: "Connection code was not found or has expired."
+    });
+    return;
+  }
+
+  response.status(200).json({
+    connected: true,
+    connectionId: connectionCode
   });
 }

@@ -8,6 +8,7 @@ The plugin has not been updated to call these hosted endpoints yet. These functi
 
 - `GET /api/auth/figma/start`
 - `GET /api/auth/figma/callback`
+- `GET /api/auth/claim?code=...`
 - `GET /api/auth/status`
 - `GET /api/figma/comments?fileKey=...`
 - `GET /api/figma/me`
@@ -42,31 +43,36 @@ The same callback URL must be configured in the Figma OAuth app settings.
 3. Add the environment variables above.
 4. Deploy.
 5. Open `/api/auth/figma/start` on the deployed domain to test the OAuth redirect.
-6. After callback success, check `/api/auth/status`.
-7. Test API access with `/api/figma/me`.
-8. Test comment access with `/api/figma/comments?fileKey=YOUR_FILE_KEY`.
+6. After callback success, copy the displayed `FW-123456` style connection code.
+7. Claim it with `/api/auth/claim?code=FW-123456`.
+8. Check `/api/auth/status?connectionId=FW-123456`.
+9. Test API access with `/api/figma/me?connectionId=FW-123456`.
+10. Test comment access with `/api/figma/comments?fileKey=YOUR_FILE_KEY&connectionId=FW-123456`.
 
 ## Current Token/Session Approach
 
-This scaffold uses the simplest working serverless session approach:
+This scaffold uses a temporary connection-code approach:
 
 - OAuth `state` is stored in a short-lived HttpOnly cookie.
-- The Figma access token is stored in an HttpOnly cookie after callback.
+- After successful OAuth, the callback displays a short `FW-123456` style code.
+- The plugin sends that code to `/api/auth/claim`.
+- Status and comment requests include the claimed code as `connectionId`.
+- The Figma access token is stored server-side behind that code.
 - The token is not logged or returned in API responses.
 - The token is not stored in a database.
 
 ## Limitations
 
 - This is not the final production token storage design.
+- The current connection-code store is in memory behind a small abstraction in `api/lib/connectionStore.ts`.
+- Vercel serverless memory is not durable and may not be shared across function instances, so a code can disappear after a cold start or fail if callback and claim run on different instances.
+- Swap the store for Vercel KV, Redis, a database, or another durable secret store before relying on this flow.
 - There is no refresh-token handling yet.
 - There is no encrypted server-side session store yet.
-- Clearing browser cookies disconnects the session.
-- If the browser blocks third-party or cross-site cookies, the plugin may not be able to use this cookie-based session directly.
 - Before production use, decide whether to use a server-side session store, Vercel KV, encrypted cookies, or another managed secret/session approach.
 
 ## What Is Not Included Yet
 
-- Plugin integration with the deployed Vercel URLs
 - Permanent token storage
 - Token refresh
 - Comment posting

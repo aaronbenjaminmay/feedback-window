@@ -1,10 +1,12 @@
+import { getConnectionToken } from "../lib/connectionStore.js";
+
 type VercelRequest = {
   method?: string;
   query: {
+    connectionId?: string | string[];
     fileKey?: string | string[];
   };
   headers: {
-    cookie?: string;
     origin?: string;
   };
 };
@@ -41,15 +43,6 @@ type FigmaCommentsResponse = {
 
 const getQueryValue = (value: string | string[] | undefined) => {
   return Array.isArray(value) ? value[0] || "" : value || "";
-};
-
-const getCookie = (cookieHeader: string | undefined, name: string) => {
-  const cookies = cookieHeader?.split(";") || [];
-  const matchingCookie = cookies.find((cookie) =>
-    cookie.trim().startsWith(`${name}=`)
-  );
-
-  return matchingCookie?.trim().slice(name.length + 1) || "";
 };
 
 const readUpstreamResponseBody = async (upstreamResponse: Response) => {
@@ -179,7 +172,8 @@ export default async function handler(
     return;
   }
 
-  const token = getCookie(request.headers.cookie, "figma_access_token");
+  const connectionId = getQueryValue(request.query.connectionId);
+  const token = getConnectionToken(connectionId);
   const fileKey = getQueryValue(request.query.fileKey).trim();
 
   if (!token) {

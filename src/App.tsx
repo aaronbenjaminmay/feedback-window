@@ -81,6 +81,12 @@ type OAuthStatusResponse = {
   connected?: boolean;
 };
 
+type OAuthClaimResponse = {
+  connected?: boolean;
+  connectionId?: string;
+  error?: string;
+};
+
 type FigmaProxyError = {
   message?: string;
   upstreamStatus?: number;
@@ -360,6 +366,8 @@ export default function App() {
   const [figmaComments, setFigmaComments] = useState<CommentItem[]>([]);
   const [currentFileKey, setCurrentFileKey] = useState("");
   const [manualFileKey, setManualFileKey] = useState("");
+  const [connectionCode, setConnectionCode] = useState("");
+  const [claimedConnectionId, setClaimedConnectionId] = useState("");
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("unknown");
   const [isFetchingFigmaComments, setIsFetchingFigmaComments] = useState(false);
@@ -495,8 +503,55 @@ export default function App() {
     setFigmaFetchStatus("");
   };
 
+  const updateConnectionCode = (value: string) => {
+    setConnectionCode(value);
+    setFigmaFetchError("");
+    setFigmaFetchStatus("");
+  };
+
   const connectToFigma = () => {
     window.open(`${API_BASE_URL}/api/auth/figma/start`, "_blank");
+  };
+
+  const claimFigmaConnection = async () => {
+    const trimmedCode = connectionCode.trim();
+
+    if (!trimmedCode) {
+      setConnectionStatus("not-connected");
+      setFigmaFetchStatus("");
+      setFigmaFetchError("Paste the connection code from the OAuth success page.");
+      return;
+    }
+
+    setFigmaFetchError("");
+    setFigmaFetchStatus("Checking connection code...");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/auth/claim?code=${encodeURIComponent(trimmedCode)}`
+      );
+      const data = (await response.json().catch(() => ({}))) as
+        OAuthClaimResponse;
+
+      if (!response.ok || !data.connected || !data.connectionId) {
+        setClaimedConnectionId("");
+        setConnectionStatus("not-connected");
+        setFigmaFetchStatus("");
+        setFigmaFetchError(
+          data.error || "Connection code was not found or has expired."
+        );
+        return;
+      }
+
+      setClaimedConnectionId(data.connectionId);
+      setConnectionCode(data.connectionId);
+      setConnectionStatus("connected");
+      setFigmaFetchStatus("Connected to Figma.");
+    } catch {
+      setFigmaFetchStatus("");
+      setConnectionStatus("unknown");
+      setFigmaFetchError("The OAuth helper could not be reached.");
+    }
   };
 
   const checkFigmaConnection = async () => {
@@ -504,16 +559,18 @@ export default function App() {
     setFigmaFetchStatus("Checking Figma connection...");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/status`, {
-        credentials: "include"
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/api/auth/status?connectionId=${encodeURIComponent(
+          claimedConnectionId
+        )}`
+      );
       const data = (await response.json()) as OAuthStatusResponse;
 
       setConnectionStatus(data.connected ? "connected" : "not-connected");
       setFigmaFetchStatus(
         data.connected
           ? "Connected to Figma."
-          : "Not connected to Figma. Click Connect to Figma first."
+          : "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
       );
     } catch {
       setFigmaFetchStatus("");
@@ -531,6 +588,14 @@ export default function App() {
       return;
     }
 
+    if (!claimedConnectionId) {
+      setFigmaFetchError(
+        "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
+      );
+      setFigmaFetchStatus("");
+      return;
+    }
+
     setFigmaFetchError("");
     setFigmaFetchStatus("Loading Figma comments...");
     setIsFetchingFigmaComments(true);
@@ -539,17 +604,14 @@ export default function App() {
       const response = await fetch(
         `${API_BASE_URL}/api/figma/comments?fileKey=${encodeURIComponent(
           activeFileKey
-        )}`,
-        {
-          credentials: "include"
-        }
+        )}&connectionId=${encodeURIComponent(claimedConnectionId)}`
       );
 
       if (response.status === 401) {
         setFigmaComments([]);
         setFigmaFetchStatus("");
         setFigmaFetchError(
-          "Not connected to Figma. Click Connect to Figma first."
+          "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
         );
         return;
       }
@@ -920,6 +982,24 @@ export default function App() {
                 </button>
               </div>
 
+              <label className="field">
+                <span>Connection Code</span>
+                <input
+                  type="text"
+                  value={connectionCode}
+                  onChange={(event) => updateConnectionCode(event.target.value)}
+                  placeholder="FW-123456"
+                />
+              </label>
+
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={claimFigmaConnection}
+              >
+                Use Connection Code
+              </button>
+
               <p className="helper-text">
                 Connection status:{" "}
                 {connectionStatus === "connected"
@@ -932,7 +1012,11 @@ export default function App() {
               <button
                 type="button"
                 onClick={fetchRealFigmaComments}
-                disabled={isFetchingFigmaComments || !activeFileKey}
+                disabled={
+                  isFetchingFigmaComments ||
+                  !activeFileKey ||
+                  !claimedConnectionId
+                }
               >
                 Load Comments from This File
               </button>
