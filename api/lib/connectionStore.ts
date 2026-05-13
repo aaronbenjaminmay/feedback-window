@@ -1,23 +1,24 @@
+import { Redis } from "@upstash/redis";
+
 type StoredConnection = {
   accessToken: string;
-  expiresAt: number;
 };
 
-type FeedbackWindowGlobal = typeof globalThis & {
-  feedbackWindowConnections?: Map<string, StoredConnection>;
-};
-
+const redis = Redis.fromEnv();
 const codePrefix = "FW";
-const defaultTtlMs = 60 * 60 * 1000;
+const codeTtlSeconds = 600;
+const sessionTtlSeconds = 14400;
 
-const getConnectionMap = () => {
-  const sharedGlobal = globalThis as FeedbackWindowGlobal;
+const buildCodeKey = (connectionCode: string) => {
+  return `code:${normalizeConnectionCode(connectionCode)}`;
+};
 
-  if (!sharedGlobal.feedbackWindowConnections) {
-    sharedGlobal.feedbackWindowConnections = new Map<string, StoredConnection>();
-  }
+const buildSessionKey = (connectionId: string) => {
+  return `session:${normalizeConnectionCode(connectionId)}`;
+};
 
-  return sharedGlobal.feedbackWindowConnections;
+const createRandomDigits = () => {
+  return Math.floor(100000 + Math.random() * 900000);
 };
 
 export const normalizeConnectionCode = (code: string) => {
@@ -25,45 +26,59 @@ export const normalizeConnectionCode = (code: string) => {
 };
 
 export const createConnectionCode = () => {
-  const connections = getConnectionMap();
-  let connectionCode = "";
-
-  do {
-    connectionCode = `${codePrefix}-${Math.floor(100000 + Math.random() * 900000)}`;
-  } while (connections.has(connectionCode));
-
-  return connectionCode;
+  return `${codePrefix}-${createRandomDigits()}`;
 };
 
-export const saveConnectionToken = (
+export const createConnectionId = () => {
+  return `${codePrefix}-SESSION-${createRandomDigits()}-${createRandomDigits()}`;
+};
+
+export const saveConnectionCode = async (
   connectionCode: string,
-  accessToken: string,
-  ttlSeconds?: number
+  accessToken: string
 ) => {
-  const ttlMs = Math.max(60, ttlSeconds || defaultTtlMs / 1000) * 1000;
-
-  getConnectionMap().set(normalizeConnectionCode(connectionCode), {
-    accessToken,
-    expiresAt: Date.now() + ttlMs
-  });
+  await redis.set<StoredConnection>(
+    buildCodeKey(connectionCode),
+    { accessToken },
+    { ex: codeTtlSeconds }
+  );
 };
 
-export const getConnectionToken = (connectionCode: string) => {
+export const claimConnectionCode = async (connectionCode: string) => {
   const normalizedCode = normalizeConnectionCode(connectionCode);
-  const connection = getConnectionMap().get(normalizedCode);
+  const codeKey = buildCodeKey(normalizedCode);
+  const storedConnection = await redis.get<StoredConnection>(codeKey);
 
-  if (!connection) {
+  if (!storedConnection?.accessToken) {
     return "";
   }
 
-  if (connection.expiresAt <= Date.now()) {
-    getConnectionMap().delete(normalizedCode);
-    return "";
-  }
+  const connectionId = createConnectionId();
 
-  return connection.accessToken;
+  await redis.set<StoredConnection>(
+    buildSessionKey(connectionId),
+    { accessToken: storedConnection.accessToken },
+    { ex: sessionTtlSeconds }
+  );
+  await redis.del(codeKey);
+
+  return connectionId;
 };
 
-export const hasConnectionToken = (connectionCode: string) => {
-  return Boolean(getConnectionToken(connectionCode));
+export const getSessionToken = async (connectionId: string) => {
+  const normalizedConnectionId = normalizeConnectionCode(connectionId);
+
+  if (!normalizedConnectionId) {
+    return "";
+  }
+
+  const storedConnection = await redis.get<StoredConnection>(
+    buildSessionKey(normalizedConnectionId)
+  );
+
+  return storedConnection?.accessToken || "";
+};
+
+export const hasSessionToken = async (connectionId: string) => {
+  return Boolean(await getSessionToken(connectionId));
 };

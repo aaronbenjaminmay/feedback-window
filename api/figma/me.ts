@@ -1,4 +1,4 @@
-import { getConnectionToken } from "../lib/connectionStore.js";
+import { getSessionToken } from "../lib/connectionStore.js";
 
 type VercelRequest = {
   method?: string;
@@ -62,7 +62,7 @@ export default async function handler(
     return;
   }
 
-  const token = getConnectionToken(getQueryValue(request.query.connectionId));
+  const token = await getSessionToken(getQueryValue(request.query.connectionId));
 
   if (!token) {
     response.status(401).json({ error: "Not connected to Figma." });

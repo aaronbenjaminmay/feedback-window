@@ -1,5 +1,5 @@
 import {
-  hasConnectionToken,
+  claimConnectionCode,
   normalizeConnectionCode
 } from "../lib/connectionStore.js";
 
@@ -35,7 +35,7 @@ const setCorsHeaders = (request: VercelRequest, response: VercelResponse) => {
   response.setHeader("Vary", "Origin");
 };
 
-export default function handler(
+export default async function handler(
   request: VercelRequest,
   response: VercelResponse
 ) {
@@ -61,7 +61,9 @@ export default function handler(
     return;
   }
 
-  if (!hasConnectionToken(connectionCode)) {
+  const connectionId = await claimConnectionCode(connectionCode);
+
+  if (!connectionId) {
     response.status(404).json({
       connected: false,
       error: "Connection code was not found or has expired."
@@ -71,6 +73,6 @@ export default function handler(
 
   response.status(200).json({
     connected: true,
-    connectionId: connectionCode
+    connectionId
   });
 }

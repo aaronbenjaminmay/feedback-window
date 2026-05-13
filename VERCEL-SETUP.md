@@ -21,6 +21,7 @@ Set these in the Vercel project settings:
 - `FIGMA_CLIENT_SECRET`
 - `FIGMA_REDIRECT_URI`
 - `FIGMA_OAUTH_SCOPES`
+- Upstash Redis environment variables injected by the Vercel Marketplace integration
 
 Use this scope for comment reading:
 
@@ -51,25 +52,25 @@ The same callback URL must be configured in the Figma OAuth app settings.
 
 ## Current Token/Session Approach
 
-This scaffold uses a temporary connection-code approach:
+This scaffold uses a Redis-backed connection-code approach:
 
 - OAuth `state` is stored in a short-lived HttpOnly cookie.
 - After successful OAuth, the callback displays a short `FW-123456` style code.
 - The plugin sends that code to `/api/auth/claim`.
 - Status and comment requests include the claimed code as `connectionId`.
-- The Figma access token is stored server-side behind that code.
+- The Figma access token is stored server-side in Upstash Redis behind that code/session.
+- Temporary codes use `code:<FW_CODE>` keys and expire after 10 minutes.
+- Claimed sessions use `session:<connectionId>` keys and expire after 4 hours.
 - The token is not logged or returned in API responses.
-- The token is not stored in a database.
+- The Redis SDK uses `Redis.fromEnv()`, so the Vercel integration should inject the required Redis URL/token values automatically.
 
 ## Limitations
 
 - This is not the final production token storage design.
-- The current connection-code store is in memory behind a small abstraction in `api/lib/connectionStore.ts`.
-- Vercel serverless memory is not durable and may not be shared across function instances, so a code can disappear after a cold start or fail if callback and claim run on different instances.
-- Swap the store for Vercel KV, Redis, a database, or another durable secret store before relying on this flow.
+- Redis storage makes the code/session flow work across Vercel serverless instances, but this is still a prototype auth flow.
 - There is no refresh-token handling yet.
 - There is no encrypted server-side session store yet.
-- Before production use, decide whether to use a server-side session store, Vercel KV, encrypted cookies, or another managed secret/session approach.
+- Before production use, decide final session lifetime, revocation, and refresh-token handling.
 
 ## What Is Not Included Yet
 

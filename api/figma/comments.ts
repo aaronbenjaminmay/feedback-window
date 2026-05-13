@@ -1,4 +1,4 @@
-import { getConnectionToken } from "../lib/connectionStore.js";
+import { getSessionToken } from "../lib/connectionStore.js";
 
 type VercelRequest = {
   method?: string;
@@ -173,7 +173,7 @@ export default async function handler(
   }
 
   const connectionId = getQueryValue(request.query.connectionId);
-  const token = getConnectionToken(connectionId);
+  const token = await getSessionToken(connectionId);
   const fileKey = getQueryValue(request.query.fileKey).trim();
 
   if (!token) {

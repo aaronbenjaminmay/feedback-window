@@ -1,4 +1,4 @@
-import { hasConnectionToken } from "../lib/connectionStore.js";
+import { hasSessionToken } from "../lib/connectionStore.js";
 
 type VercelRequest = {
   method?: string;
@@ -32,7 +32,10 @@ const setCorsHeaders = (request: VercelRequest, response: VercelResponse) => {
   response.setHeader("Vary", "Origin");
 };
 
-export default function handler(request: VercelRequest, response: VercelResponse) {
+export default async function handler(
+  request: VercelRequest,
+  response: VercelResponse
+) {
   setCorsHeaders(request, response);
 
   if (request.method === "OPTIONS") {
@@ -48,6 +51,6 @@ export default function handler(request: VercelRequest, response: VercelResponse
   const connectionId = getQueryValue(request.query.connectionId);
 
   response.json({
-    connected: Boolean(connectionId && hasConnectionToken(connectionId))
+    connected: Boolean(connectionId && (await hasSessionToken(connectionId)))
   });
 }
