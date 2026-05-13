@@ -18,7 +18,7 @@ const defaultSettings: FeedbackSettings = {
   lateFeedbackMessage: defaultLateFeedbackMessage
 };
 
-const localOAuthServerUrl = "http://localhost:8788";
+const API_BASE_URL = "https://feedback-window.vercel.app";
 
 type ActiveTab = "dashboard" | "setup" | "comments" | "tasks";
 type ReviewWindowStatus = "Not configured" | "Open" | "Closed" | "Upcoming";
@@ -496,7 +496,7 @@ export default function App() {
   };
 
   const connectToFigma = () => {
-    window.open(`${localOAuthServerUrl}/auth/figma/start`, "_blank");
+    window.open(`${API_BASE_URL}/api/auth/figma/start`, "_blank");
   };
 
   const checkFigmaConnection = async () => {
@@ -504,19 +504,21 @@ export default function App() {
     setFigmaFetchStatus("Checking Figma connection...");
 
     try {
-      const response = await fetch(`${localOAuthServerUrl}/auth/status`);
+      const response = await fetch(`${API_BASE_URL}/api/auth/status`, {
+        credentials: "include"
+      });
       const data = (await response.json()) as OAuthStatusResponse;
 
       setConnectionStatus(data.connected ? "connected" : "not-connected");
       setFigmaFetchStatus(
-        data.connected ? "Connected to Figma." : "Not connected to Figma yet."
+        data.connected
+          ? "Connected to Figma."
+          : "Not connected to Figma. Click Connect to Figma first."
       );
     } catch {
       setFigmaFetchStatus("");
       setConnectionStatus("unknown");
-      setFigmaFetchError(
-        "Local OAuth server is not running. Start the server and try again."
-      );
+      setFigmaFetchError("The OAuth helper could not be reached.");
     }
   };
 
@@ -535,10 +537,22 @@ export default function App() {
 
     try {
       const response = await fetch(
-        `${localOAuthServerUrl}/api/figma/comments?fileKey=${encodeURIComponent(
+        `${API_BASE_URL}/api/figma/comments?fileKey=${encodeURIComponent(
           activeFileKey
-        )}`
+        )}`,
+        {
+          credentials: "include"
+        }
       );
+
+      if (response.status === 401) {
+        setFigmaComments([]);
+        setFigmaFetchStatus("");
+        setFigmaFetchError(
+          "Not connected to Figma. Click Connect to Figma first."
+        );
+        return;
+      }
 
       if (response.status === 403) {
         setFigmaComments([]);
@@ -589,9 +603,7 @@ export default function App() {
     } catch {
       setFigmaComments([]);
       setFigmaFetchStatus("");
-      setFigmaFetchError(
-        "Local OAuth server is not running. Start the server and try again."
-      );
+      setFigmaFetchError("The OAuth helper could not be reached.");
     } finally {
       setIsFetchingFigmaComments(false);
     }
@@ -852,7 +864,7 @@ export default function App() {
             <div className="section-summary">
               <h2>Load Figma Comments</h2>
               <p>
-                Connect through the local OAuth server, then load comments from
+                Connect through the OAuth helper, then load comments from
                 the current Figma file.
               </p>
             </div>
