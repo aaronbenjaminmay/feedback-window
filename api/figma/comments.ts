@@ -36,6 +36,11 @@ type FigmaComment = {
   nodeId?: string;
   pageName?: string;
   commentUrl?: string;
+  debugClientMeta?: unknown;
+  debugExtractedNodeId?: string;
+  debugLookupNodeId?: string;
+  debugPageMapHasNode?: boolean;
+  debugPageMapSampleKeys?: string[];
 };
 
 type FigmaCommentsResponse = {
@@ -229,25 +234,40 @@ const enrichCommentsWithLocation = (
   return {
     ...body,
     comments: body.comments.map((comment, index) => {
-      const nodeId = extractNodeId(comment);
-      const pageName = nodeId
-        ? nodePageMap.get(nodeId) || "Unknown page"
+      const extractedNodeId = extractNodeId(comment);
+      const lookupNodeId = extractedNodeId
+        ? normalizeNodeIdForLookup(extractedNodeId)
+        : "";
+      const pageName = lookupNodeId
+        ? nodePageMap.get(lookupNodeId) || "Unknown page"
         : "Unknown page";
-      const commentUrl = buildCommentUrl(fileKey, nodeId, comment.id || "");
-
-      if (index < 10) {
-        console.log("Figma comment location metadata", {
-          commentId: comment.id || "",
-          client_meta: comment.client_meta ?? null,
-          extractedNodeId: nodeId
-        });
-      }
+      const commentUrl = buildCommentUrl(
+        fileKey,
+        lookupNodeId,
+        comment.id || ""
+      );
+      const debugFields =
+        index < 5
+          ? {
+              debugClientMeta: comment.client_meta ?? null,
+              debugExtractedNodeId: extractedNodeId || "",
+              debugLookupNodeId: lookupNodeId || "",
+              debugPageMapHasNode: lookupNodeId
+                ? nodePageMap.has(lookupNodeId)
+                : false,
+              debugPageMapSampleKeys: Array.from(nodePageMap.keys()).slice(
+                0,
+                10
+              )
+            }
+          : {};
 
       return {
         ...comment,
         pageName,
         commentUrl: commentUrl || undefined,
-        nodeId: nodeId || undefined
+        nodeId: lookupNodeId || undefined,
+        ...debugFields
       };
     })
   };

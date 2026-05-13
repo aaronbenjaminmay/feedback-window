@@ -54,6 +54,11 @@ type FigmaApiComment = {
   pageName?: string;
   commentUrl?: string;
   nodeId?: string;
+  debugClientMeta?: unknown;
+  debugExtractedNodeId?: string;
+  debugLookupNodeId?: string;
+  debugPageMapHasNode?: boolean;
+  debugPageMapSampleKeys?: string[];
   author?: {
     handle?: string;
     name?: string;
@@ -139,6 +144,26 @@ const formatCommentDate = (createdAt: string) => {
     day: "numeric",
     year: "numeric"
   }).format(new Date(createdAt));
+};
+
+const formatDebugValue = (value: unknown) => {
+  if (value === undefined) {
+    return "(not included for this comment)";
+  }
+
+  try {
+    const serializedValue = JSON.stringify(value);
+
+    if (!serializedValue) {
+      return "(empty)";
+    }
+
+    return serializedValue.length > 500
+      ? `${serializedValue.slice(0, 500)}...`
+      : serializedValue;
+  } catch {
+    return String(value);
+  }
 };
 
 const getTodayDate = () => {
@@ -656,7 +681,12 @@ export default function App() {
             createdAt: comment.created_at || new Date().toISOString(),
             pageName: comment.pageName || "Unknown page",
             commentUrl: comment.commentUrl,
-            nodeId: comment.nodeId
+            nodeId: comment.nodeId,
+            debugClientMeta: comment.debugClientMeta,
+            debugExtractedNodeId: comment.debugExtractedNodeId,
+            debugLookupNodeId: comment.debugLookupNodeId,
+            debugPageMapHasNode: comment.debugPageMapHasNode,
+            debugPageMapSampleKeys: comment.debugPageMapSampleKeys
           };
         }
       );
@@ -1123,6 +1153,33 @@ export default function App() {
                           >
                             View in Figma
                           </a>
+                        )}
+                        {comment.pageName === "Unknown page" && (
+                          <div>
+                            <p>
+                              Debug client_meta:{" "}
+                              {formatDebugValue(comment.debugClientMeta)}
+                            </p>
+                            <p>
+                              Debug extracted nodeId:{" "}
+                              {comment.debugExtractedNodeId || "(none)"}
+                            </p>
+                            <p>
+                              Debug lookup nodeId:{" "}
+                              {comment.debugLookupNodeId || "(none)"}
+                            </p>
+                            <p>
+                              Debug page map has node:{" "}
+                              {comment.debugPageMapHasNode === undefined
+                                ? "(not included for this comment)"
+                                : String(comment.debugPageMapHasNode)}
+                            </p>
+                            <p>
+                              Debug page map sample keys:{" "}
+                              {comment.debugPageMapSampleKeys?.join(", ") ||
+                                "(none)"}
+                            </p>
+                          </div>
                         )}
                       </div>
                       <p className="comment-date">
