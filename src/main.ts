@@ -3,8 +3,18 @@ figma.showUI(__html__, { width: 960, height: 720 });
 const figmaRuntime = figma as typeof figma & {
   fileKey?: string;
 };
-const currentFileKey =
-  typeof figmaRuntime.fileKey === "string" ? figmaRuntime.fileKey : "";
+
+const getCurrentFileKey = () => {
+  if (typeof figmaRuntime.fileKey === "string") {
+    return figmaRuntime.fileKey;
+  }
+
+  // Figma does not expose a second stable file key on figma.root or document
+  // plugin data. Keep the UI fallback for runtimes where figma.fileKey is absent.
+  return "";
+};
+
+const currentFileKey = getCurrentFileKey();
 
 figma.ui.postMessage({
   type: "current-file-key",

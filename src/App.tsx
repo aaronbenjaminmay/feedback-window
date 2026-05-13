@@ -524,7 +524,7 @@ export default function App() {
     }
 
     setFigmaFetchError("");
-    setFigmaFetchStatus("Checking connection code...");
+    setFigmaFetchStatus("");
 
     try {
       const response = await fetch(
@@ -546,7 +546,7 @@ export default function App() {
       setClaimedConnectionId(data.connectionId);
       setConnectionCode(data.connectionId);
       setConnectionStatus("connected");
-      setFigmaFetchStatus("Connected to Figma.");
+      setFigmaFetchStatus("");
     } catch {
       setFigmaFetchStatus("");
       setConnectionStatus("unknown");
@@ -556,7 +556,7 @@ export default function App() {
 
   const checkFigmaConnection = async () => {
     setFigmaFetchError("");
-    setFigmaFetchStatus("Checking Figma connection...");
+    setFigmaFetchStatus("");
 
     try {
       const response = await fetch(
@@ -567,11 +567,14 @@ export default function App() {
       const data = (await response.json()) as OAuthStatusResponse;
 
       setConnectionStatus(data.connected ? "connected" : "not-connected");
-      setFigmaFetchStatus(
-        data.connected
-          ? "Connected to Figma."
-          : "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
-      );
+      setFigmaFetchStatus("");
+
+      if (!data.connected) {
+        setClaimedConnectionId("");
+        setFigmaFetchError(
+          "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
+        );
+      }
     } catch {
       setFigmaFetchStatus("");
       setConnectionStatus("unknown");
@@ -659,9 +662,7 @@ export default function App() {
       );
 
       setFigmaComments(normalizedComments);
-      setFigmaFetchStatus(
-        `Loaded ${normalizedComments.length} Figma comments for this session.`
-      );
+      setFigmaFetchStatus("");
     } catch {
       setFigmaComments([]);
       setFigmaFetchStatus("");
@@ -932,19 +933,14 @@ export default function App() {
             </div>
 
             <div className="figma-comments-form">
-              <div className="metadata-panel">
-                <span>Current File Key</span>
-                <strong>{currentFileKey || "Not available"}</strong>
-              </div>
-
-              {!currentFileKey && (
-                <>
-                  <p className="error-message">
-                    The plugin could not detect the current Figma file key.
-                  </p>
-
+              {currentFileKey ? (
+                <div className="connection-state">
+                  <strong>Current file detected</strong>
+                </div>
+              ) : (
+                <div className="manual-file-key">
                   <label className="field">
-                    <span>Figma File Key</span>
+                    <span>Figma file key</span>
                     <input
                       type="text"
                       value={manualFileKey}
@@ -956,21 +952,18 @@ export default function App() {
                   </label>
 
                   <p className="helper-text">
-                    If the plugin cannot detect the file key, paste it from the
-                    Figma URL. It is the string after /design/ or /file/.
+                    Paste the key from the Figma URL if this file cannot be
+                    detected automatically.
                   </p>
-                </>
+                </div>
               )}
 
-              <div className="metadata-panel debug-panel">
-                <span>Debug File Key Values</span>
-                <p>Detected: {currentFileKey || "(none)"}</p>
-                <p>Manual: {manualFileKey.trim() || "(none)"}</p>
-                <p>Active: {activeFileKey || "(none)"}</p>
-              </div>
-
               <div className="connection-actions">
-                <button type="button" onClick={connectToFigma}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={connectToFigma}
+                >
                   Connect to Figma
                 </button>
                 <button
@@ -982,34 +975,38 @@ export default function App() {
                 </button>
               </div>
 
-              <label className="field">
-                <span>Connection Code</span>
-                <input
-                  type="text"
-                  value={connectionCode}
-                  onChange={(event) => updateConnectionCode(event.target.value)}
-                  placeholder="FW-123456"
-                />
-              </label>
+              {connectionStatus === "connected" ? (
+                <div className="connection-state success">
+                  <strong>Connected to Figma</strong>
+                </div>
+              ) : (
+                <>
+                  <label className="field">
+                    <span>Connection Code</span>
+                    <input
+                      type="text"
+                      value={connectionCode}
+                      onChange={(event) =>
+                        updateConnectionCode(event.target.value)
+                      }
+                      placeholder="FW-123456"
+                    />
+                  </label>
+
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={claimFigmaConnection}
+                  >
+                    Use Connection Code
+                  </button>
+                </>
+              )}
 
               <button
-                className="secondary-button"
-                type="button"
-                onClick={claimFigmaConnection}
-              >
-                Use Connection Code
-              </button>
-
-              <p className="helper-text">
-                Connection status:{" "}
-                {connectionStatus === "connected"
-                  ? "connected"
-                  : connectionStatus === "not-connected"
-                    ? "not connected"
-                    : "not checked"}
-              </p>
-
-              <button
+                className={
+                  connectionStatus === "connected" ? "primary-action" : ""
+                }
                 type="button"
                 onClick={fetchRealFigmaComments}
                 disabled={

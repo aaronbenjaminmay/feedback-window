@@ -227,39 +227,32 @@ button:disabled:hover {
   margin-top: 12px;
 }
 
-.metadata-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.manual-file-key,
+.connection-state {
   border: 1px solid #d8dee8;
   border-radius: 8px;
   padding: 12px;
   background: #f9fafb;
 }
 
-.metadata-panel span {
-  color: #5b6573;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.metadata-panel strong {
-  overflow-wrap: anywhere;
-  color: #1f2933;
+.connection-state {
+  color: #475467;
   font-size: 13px;
   line-height: 1.4;
 }
 
-.metadata-panel p {
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: #5b6573;
-  font-size: 12px;
-  line-height: 1.35;
+.connection-state strong {
+  color: #1f2937;
 }
 
-.debug-panel {
-  background: #ffffff;
+.connection-state.success {
+  border-color: #bbf7d0;
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.connection-state.success strong {
+  color: #166534;
 }
 
 .connection-actions {
@@ -270,6 +263,14 @@ button:disabled:hover {
 
 .connection-actions .secondary-button {
   margin-top: 0;
+}
+
+.primary-action {
+  background: #2563eb;
+}
+
+.primary-action:hover {
+  background: #1d4ed8;
 }
 
 .accordion-card {
