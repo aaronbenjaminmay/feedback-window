@@ -109,18 +109,17 @@ const renderCallbackPage = ({
           }
 
           .mark {
-            display: inline-grid;
-            width: 44px;
-            height: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             margin-bottom: 24px;
-            place-items: center;
-            border: 1px solid ${isError ? "#f1b8b8" : "#e6e6e6"};
-            border-radius: 12px;
-            color: ${isError ? "#b42318" : "#111111"};
-            background: ${isError ? "#fff3f3" : "#ffffff"};
-            font-size: 14px;
-            font-weight: 800;
-            letter-spacing: 0;
+          }
+
+          .mark img {
+            display: block;
+            width: auto;
+            height: 64px;
+            object-fit: contain;
           }
 
           h1 {
@@ -202,7 +201,9 @@ const renderCallbackPage = ({
       </head>
       <body>
         <main class="card">
-          <div class="mark">FW</div>
+          <div class="mark">
+            <img src="/FW-icon.svg" alt="Feedback Window" />
+          </div>
           <h1>${title}</h1>
           <p>${helperText}</p>
           ${body || ""}
