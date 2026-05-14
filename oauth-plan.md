@@ -16,6 +16,7 @@ The goal is to move from the current internal spike flow to a more realistic con
 ## 3. Required Scope
 
 - `file_comments:read`
+- `file_comments:write`
 
 ## 4. Proposed Architecture
 
@@ -33,7 +34,7 @@ The goal is to move from the current internal spike flow to a more realistic con
 
 - **Figma OAuth app**
   - Defines the OAuth client ID, client secret, allowed callback URL, and requested scopes.
-  - Requests `file_comments:read` permission.
+  - Requests `file_comments:read` and `file_comments:write` permission.
 
 - **Callback URL**
   - Points to the local/backend auth server.

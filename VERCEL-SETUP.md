@@ -11,6 +11,7 @@ The plugin has not been updated to call these hosted endpoints yet. These functi
 - `GET /api/auth/claim?code=...`
 - `GET /api/auth/status`
 - `GET /api/figma/comments?fileKey=...`
+- `POST /api/figma/reply-late-comments`
 - `GET /api/figma/me`
 
 ## Required Environment Variables
@@ -23,10 +24,10 @@ Set these in the Vercel project settings:
 - `FIGMA_OAUTH_SCOPES`
 - Upstash Redis environment variables injected by the Vercel Marketplace integration
 
-Use this scope for comment reading:
+Use these scopes for reading comments and posting controlled late-feedback replies:
 
 ```txt
-file_comments:read
+file_comments:read file_comments:write
 ```
 
 The callback URL should point to the deployed callback function, for example:

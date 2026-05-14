@@ -51,6 +51,7 @@ type FigmaApiComment = {
   id?: string;
   message?: string;
   created_at?: string;
+  parent_id?: string;
   pageName?: string;
   commentUrl?: string;
   nodeId?: string;
@@ -99,6 +100,18 @@ type FigmaProxyError = {
   upstreamStatus?: number;
   upstreamBody?: unknown;
   error?: string;
+};
+
+type ReplyLateCommentsResponse = {
+  repliedCommentIds?: string[];
+  skippedCommentIds?: string[];
+  failedCommentIds?: {
+    commentId: string;
+    upstreamStatus: number;
+    upstreamBody: unknown;
+  }[];
+  error?: string;
+  message?: string;
 };
 
 const commentFilterOptions: { label: string; value: CommentFilter }[] = [
@@ -411,6 +424,11 @@ export default function App() {
   const [isFetchingFigmaComments, setIsFetchingFigmaComments] = useState(false);
   const [figmaFetchStatus, setFigmaFetchStatus] = useState("");
   const [figmaFetchError, setFigmaFetchError] = useState("");
+  const [lateReplyStatus, setLateReplyStatus] = useState("");
+  const [lateReplyError, setLateReplyError] = useState("");
+  const [repliedLateCommentIds, setRepliedLateCommentIds] = useState<string[]>(
+    []
+  );
   const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
   const [commentSearch, setCommentSearch] = useState("");
   const [commentPageTitleFilter, setCommentPageTitleFilter] = useState("");
@@ -684,13 +702,16 @@ export default function App() {
       const normalizedComments: CommentItem[] = (data.comments || []).map(
         (comment, index) => {
           const author = comment.author || comment.user;
+          const figmaCommentId = comment.id || "";
 
           return {
-            id: `figma-${comment.id || index}`,
+            id: `figma-${figmaCommentId || index}`,
+            figmaCommentId,
             authorName:
               author?.name || author?.handle || "Unknown Figma user",
             email: author?.email || "",
             handle: author?.handle,
+            parentId: comment.parent_id || undefined,
             message: comment.message || "",
             createdAt: comment.created_at || new Date().toISOString(),
             pageName: comment.pageName || "Unknown page",
@@ -715,6 +736,121 @@ export default function App() {
       setFigmaFetchError("The OAuth helper could not be reached.");
     } finally {
       setIsFetchingFigmaComments(false);
+    }
+  };
+
+  const replyToLateComments = async () => {
+    const activeFileKey = currentFileKey || manualFileKey.trim();
+    const commentIdsToReplyTo = lateRootCommentsAwaitingReply
+      .map((comment) => comment.figmaCommentId)
+      .filter((commentId): commentId is string => Boolean(commentId));
+
+    if (!activeFileKey) {
+      setLateReplyStatus("");
+      setLateReplyError("No Figma file key is available for this file.");
+      return;
+    }
+
+    if (!claimedConnectionId) {
+      setLateReplyStatus("");
+      setLateReplyError(
+        "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
+      );
+      return;
+    }
+
+    if (commentIdsToReplyTo.length === 0) {
+      setLateReplyStatus("No unreplied late root comments are available.");
+      setLateReplyError("");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Post the saved late feedback message to ${commentIdsToReplyTo.length} late comment${
+        commentIdsToReplyTo.length === 1 ? "" : "s"
+      }?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setLateReplyStatus("Posting late-feedback replies...");
+    setLateReplyError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/figma/reply-late-comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          connectionId: claimedConnectionId,
+          fileKey: activeFileKey,
+          commentIds: commentIdsToReplyTo,
+          message: settings.lateFeedbackMessage
+        })
+      });
+      const data = (await response.json().catch(() => ({}))) as
+        ReplyLateCommentsResponse;
+
+      if (response.status === 401) {
+        setLateReplyStatus("");
+        setLateReplyError(
+          "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
+        );
+        return;
+      }
+
+      if (response.status === 403) {
+        setLateReplyStatus("");
+        setLateReplyError(
+          "Figma denied permission to post comment replies. Confirm the OAuth app has file_comments:write."
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        setLateReplyStatus("");
+        setLateReplyError(
+          data.message || data.error || "Could not post late-feedback replies."
+        );
+        return;
+      }
+
+      const repliedCommentIds = data.repliedCommentIds || [];
+      const failedCount = data.failedCommentIds?.length || 0;
+      const skippedCount = data.skippedCommentIds?.length || 0;
+
+      setRepliedLateCommentIds((currentIds) =>
+        Array.from(new Set([...currentIds, ...repliedCommentIds]))
+      );
+
+      if (repliedCommentIds.length === 0 && failedCount > 0) {
+        setLateReplyStatus("");
+        setLateReplyError("Figma could not post the late-feedback replies.");
+        return;
+      }
+
+      setLateReplyStatus(
+        `Posted ${repliedCommentIds.length} late-feedback repl${
+          repliedCommentIds.length === 1 ? "y" : "ies"
+        }${
+          skippedCount > 0
+            ? `; skipped ${skippedCount} non-root comment${
+                skippedCount === 1 ? "" : "s"
+              }`
+            : ""
+        }${
+          failedCount > 0
+            ? `; ${failedCount} failed in Figma`
+            : ""
+        }.`
+      );
+      setLateReplyError("");
+    } catch {
+      setLateReplyStatus("");
+      setLateReplyError("The OAuth helper could not be reached.");
     }
   };
 
@@ -768,6 +904,15 @@ export default function App() {
     commentSearch,
     commentPageTitleFilter,
     commentSort
+  );
+  const lateClientComments = classifiedComments.filter(
+    (comment) => comment.audience === "Client" && comment.timing === "Late"
+  );
+  const lateRootCommentsAwaitingReply = lateClientComments.filter(
+    (comment) =>
+      !comment.parentId &&
+      comment.figmaCommentId &&
+      !repliedLateCommentIds.includes(comment.figmaCommentId)
   );
   const visibleTasks = filterAndSortTasks(tasks, taskFilter, taskSearch, taskSort);
   const taskCommentIds = tasks.map((task) => task.commentId);
@@ -1074,6 +1219,34 @@ export default function App() {
               )}
             </div>
           </section>
+
+          {lateClientComments.length > 0 && (
+            <section className="late-feedback-warning">
+              <strong>Late feedback summary</strong>
+              <p>{settings.lateFeedbackMessage}</p>
+              <p>
+                {lateRootCommentsAwaitingReply.length} late root comment
+                {lateRootCommentsAwaitingReply.length === 1 ? "" : "s"} ready
+                for reply.
+              </p>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={replyToLateComments}
+                disabled={lateRootCommentsAwaitingReply.length === 0}
+              >
+                Reply to late comments
+              </button>
+
+              {lateReplyStatus && (
+                <p className="helper-text">{lateReplyStatus}</p>
+              )}
+
+              {lateReplyError && (
+                <p className="error-message">{lateReplyError}</p>
+              )}
+            </section>
+          )}
 
           <section className="accordion-card">
             <button

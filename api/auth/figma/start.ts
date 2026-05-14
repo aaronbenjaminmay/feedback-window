@@ -10,7 +10,7 @@ type VercelResponse = {
 };
 
 const figmaAuthorizeUrl = "https://www.figma.com/oauth";
-const defaultScopes = "file_comments:read";
+const defaultScopes = "file_comments:read file_comments:write";
 
 declare const process: {
   env: Record<string, string | undefined>;

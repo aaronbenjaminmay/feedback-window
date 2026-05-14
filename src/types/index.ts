@@ -26,9 +26,11 @@ export type Task = {
 
 export type CommentItem = {
   id: string;
+  figmaCommentId?: string;
   authorName: string;
   email: string;
   handle?: string;
+  parentId?: string;
   message: string;
   createdAt: string;
   pageName?: string;
