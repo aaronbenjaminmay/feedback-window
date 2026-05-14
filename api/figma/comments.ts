@@ -36,22 +36,10 @@ type FigmaComment = {
   nodeId?: string;
   pageName?: string;
   commentUrl?: string;
-  debugClientMeta?: unknown;
-  debugExtractedNodeId?: string;
-  debugLookupNodeId?: string;
-  debugPageMapHasNode?: boolean;
-  debugPageMapSampleKeys?: string[];
-  debugFileTreeStatus?: number | string;
-  debugFileTreeError?: unknown;
 };
 
 type FigmaCommentsResponse = {
   comments?: FigmaComment[];
-};
-
-type FileTreeDebug = {
-  status?: number | string;
-  error?: unknown;
 };
 
 const getQueryValue = (value: string | string[] | undefined) => {
@@ -227,8 +215,7 @@ const buildCommentUrl = (fileKey: string, nodeId: string, commentId: string) => 
 const enrichCommentsWithLocation = (
   commentsBody: unknown,
   nodePageMap: Map<string, string>,
-  fileKey: string,
-  fileTreeDebug: FileTreeDebug
+  fileKey: string
 ) => {
   if (!commentsBody || typeof commentsBody !== "object") {
     return commentsBody;
@@ -242,7 +229,7 @@ const enrichCommentsWithLocation = (
 
   return {
     ...body,
-    comments: body.comments.map((comment, index) => {
+    comments: body.comments.map((comment) => {
       const extractedNodeId = extractNodeId(comment);
       const lookupNodeId = extractedNodeId
         ? normalizeNodeIdForLookup(extractedNodeId)
@@ -255,30 +242,12 @@ const enrichCommentsWithLocation = (
         lookupNodeId,
         comment.id || ""
       );
-      const debugFields =
-        index < 5
-          ? {
-              debugClientMeta: comment.client_meta ?? null,
-              debugExtractedNodeId: extractedNodeId || "",
-              debugLookupNodeId: lookupNodeId || "",
-              debugPageMapHasNode: lookupNodeId
-                ? nodePageMap.has(lookupNodeId)
-                : false,
-              debugPageMapSampleKeys: Array.from(nodePageMap.keys()).slice(
-                0,
-                10
-              ),
-              debugFileTreeStatus: fileTreeDebug.status,
-              debugFileTreeError: fileTreeDebug.error
-            }
-          : {};
 
       return {
         ...comment,
         pageName,
         commentUrl: commentUrl || undefined,
-        nodeId: lookupNodeId || undefined,
-        ...debugFields
+        nodeId: lookupNodeId || undefined
       };
     })
   };
@@ -335,7 +304,6 @@ export default async function handler(
     }
 
     let nodePageMap = new Map<string, string>();
-    const fileTreeDebug: FileTreeDebug = {};
 
     try {
       const fileResponse = await fetch(
@@ -350,30 +318,16 @@ export default async function handler(
         fileResponse
       )) as FigmaFileResponse | null;
 
-      fileTreeDebug.status = fileResponse.status;
-
       if (fileResponse.ok) {
         nodePageMap = buildNodePageMap(fileBody);
-      } else {
-        fileTreeDebug.error = fileBody;
       }
-    } catch (error) {
+    } catch {
       nodePageMap = new Map<string, string>();
-      fileTreeDebug.status = "fetch-error";
-      fileTreeDebug.error =
-        error instanceof Error ? error.message : "Unknown file tree fetch error.";
     }
 
     response
       .status(commentsResponse.status)
-      .json(
-        enrichCommentsWithLocation(
-          commentsBody,
-          nodePageMap,
-          fileKey,
-          fileTreeDebug
-        )
-      );
+      .json(enrichCommentsWithLocation(commentsBody, nodePageMap, fileKey));
   } catch {
     response.status(502).json({
       error: "Could not fetch comments from Figma."

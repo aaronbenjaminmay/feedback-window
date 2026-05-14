@@ -36,13 +36,6 @@ export type CommentItem = {
   pageName?: string;
   commentUrl?: string;
   nodeId?: string;
-  debugClientMeta?: unknown;
-  debugExtractedNodeId?: string;
-  debugLookupNodeId?: string;
-  debugPageMapHasNode?: boolean;
-  debugPageMapSampleKeys?: string[];
-  debugFileTreeStatus?: number | string;
-  debugFileTreeError?: unknown;
 };
 
 export type FeedbackSettings = {
