@@ -7,7 +7,7 @@ import {
   saveTasks
 } from "./lib/storage";
 import type { CommentItem, FeedbackSettings, Task } from "./types";
-import fwIconSvg from "./assets/FW-icon.svg?raw";
+import fwIconSvg from "../public/FW-icon.svg?raw";
 
 const defaultLateFeedbackMessage =
   "Feedback period closed. Feedback given after the cutoff date cannot be guaranteed and may not be placed in the active backlog.";
