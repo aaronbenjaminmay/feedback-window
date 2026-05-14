@@ -1344,7 +1344,6 @@ export default function App() {
                       <div>
                         <h3>{comment.authorName}</h3>
                         {comment.email && <p>{comment.email}</p>}
-                        {comment.handle && <p>Handle: {comment.handle}</p>}
                         {comment.pageName && <p>Page: {comment.pageName}</p>}
                         {comment.commentUrl && (
                           <a
@@ -1419,6 +1418,9 @@ export default function App() {
                       >
                         {comment.timing}
                       </span>
+                      {taskAlreadyExists && (
+                        <span className="badge task-created">Task Created</span>
+                      )}
                     </div>
 
                     {isClientLate && (
@@ -1428,37 +1430,39 @@ export default function App() {
                       </div>
                     )}
 
-                    {taskAlreadyExists ? (
-                      <p className="task-created">Task Created</p>
-                    ) : isClientLate ? (
-                      <div className="late-actions">
+                    {!taskAlreadyExists && (
+                      isClientLate ? (
+                        <div className="late-actions">
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() =>
+                              convertCommentToTask(comment, "accepted-late")
+                            }
+                          >
+                            Accept Anyway
+                          </button>
+                          <button
+                            className="secondary-button defer-button"
+                            type="button"
+                            onClick={() =>
+                              convertCommentToTask(comment, "deferred-late")
+                            }
+                          >
+                            Defer
+                          </button>
+                        </div>
+                      ) : (
                         <button
                           className="secondary-button"
                           type="button"
                           onClick={() =>
-                            convertCommentToTask(comment, "accepted-late")
+                            convertCommentToTask(comment, "accepted")
                           }
                         >
-                          Accept Anyway
+                          Convert to Task
                         </button>
-                        <button
-                          className="secondary-button defer-button"
-                          type="button"
-                          onClick={() =>
-                            convertCommentToTask(comment, "deferred-late")
-                          }
-                        >
-                          Defer
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => convertCommentToTask(comment, "accepted")}
-                      >
-                        Convert to Task
-                      </button>
+                      )
                     )}
                   </article>
                 );

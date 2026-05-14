@@ -400,6 +400,12 @@ button:disabled:hover {
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
+.comment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .late-warning-card {
   border-color: #fca5a5;
   background: #fff7f7;
@@ -411,6 +417,10 @@ button:disabled:hover {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.comment-card-header {
+  margin-bottom: 0;
 }
 
 .comment-card h3,
@@ -459,11 +469,9 @@ button:disabled:hover {
   line-height: 1.45;
 }
 
-.task-created {
-  margin-top: 12px;
+.badge.task-created {
   color: #166534;
-  font-size: 13px;
-  font-weight: 700;
+  background: #dcfce7;
 }
 
 .late-feedback-warning {
@@ -473,6 +481,10 @@ button:disabled:hover {
   padding: 10px;
   color: #7f1d1d;
   background: #fee2e2;
+}
+
+.comment-card .late-feedback-warning {
+  margin-top: 0;
 }
 
 .late-feedback-warning strong {
@@ -491,6 +503,11 @@ button:disabled:hover {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-top: 12px;
+}
+
+.comment-card .late-actions,
+.comment-card > .secondary-button {
+  margin-top: 0;
 }
 
 .late-actions .secondary-button {
@@ -543,6 +560,10 @@ button:disabled:hover {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 12px;
+}
+
+.comment-card .badges {
+  margin-top: 0;
 }
 
 .badge {
