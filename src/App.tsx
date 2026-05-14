@@ -7,6 +7,7 @@ import {
   saveTasks
 } from "./lib/storage";
 import type { CommentItem, FeedbackSettings, Task } from "./types";
+import fwIcon from "./assets/FW-icon.svg";
 
 const defaultLateFeedbackMessage =
   "Feedback period closed. Feedback given after the cutoff date cannot be guaranteed and may not be placed in the active backlog.";
@@ -967,8 +968,11 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <h1>Feedback Window</h1>
-          <p>Review governance</p>
+          <img
+            className="sidebar-icon"
+            src={fwIcon}
+            alt="Feedback Window"
+          />
         </div>
 
         <nav className="sidebar-nav" aria-label="Feedback Window sections">

@@ -30,18 +30,18 @@ textarea {
   background: #ffffff;
 }
 
-.sidebar-brand h1 {
-  margin: 0 0 7px;
-  color: #111827;
-  font-size: 20px;
-  line-height: 1.2;
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 12px 4px;
 }
 
-.sidebar-brand p {
-  margin: 0;
-  color: #667085;
-  font-size: 13px;
-  line-height: 1.4;
+.sidebar-icon {
+  display: block;
+  width: auto;
+  height: 80px;
+  object-fit: contain;
 }
 
 .sidebar-nav {
