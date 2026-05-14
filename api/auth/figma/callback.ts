@@ -22,7 +22,7 @@ type VercelResponse = {
 };
 
 const figmaTokenUrl = "https://api.figma.com/v1/oauth/token";
-const fwIconPath = "/FW-icon.svg";
+const fwIconPath = "/FW-icon.svg?v=black";
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -119,7 +119,8 @@ const renderCallbackPage = ({
           .mark img {
             display: block;
             width: auto;
-            height: 64px;
+            height: 80px;
+            aspect-ratio: 59 / 80;
             object-fit: contain;
           }
 
