@@ -333,29 +333,6 @@ const escapeCsvValue = (value: string) => {
   return `"${value.replace(/"/g, '""')}"`;
 };
 
-const buildTaskDescription = (task: Task) => {
-  const pageName = task.pageName || "";
-  const commentUrl = task.commentUrl || "";
-  const commentDate = formatCommentDate(task.createdAt);
-
-  return [
-    "Original Comment:",
-    task.title,
-    "",
-    "Page:",
-    pageName,
-    "",
-    "Link:",
-    commentUrl,
-    "",
-    "Submitted by:",
-    task.authorName,
-    "",
-    "Date:",
-    commentDate
-  ].join("\n");
-};
-
 const buildTasksCsv = (
   tasksToExport: Task[],
   currentSettings: FeedbackSettings
@@ -366,8 +343,8 @@ const buildTasksCsv = (
     "Original Commenter",
     "Comment Date",
     "Page Name",
-    "Comment URL",
-    "Timing",
+    "Figma Comment Link",
+    "Feedback Timing",
     "Type",
     "Client-facing?"
   ];
@@ -376,8 +353,8 @@ const buildTasksCsv = (
     const audience = getTaskAudience(task, currentSettings);
 
     return [
+      "",
       task.title,
-      buildTaskDescription(task),
       task.authorName,
       formatCommentDate(task.createdAt),
       task.pageName || "",
