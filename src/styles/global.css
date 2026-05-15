@@ -553,13 +553,6 @@ button:disabled:hover {
   font-weight: 700;
 }
 
-.task-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 14px;
-}
-
 .badges {
   display: flex;
   flex-wrap: wrap;
@@ -597,19 +590,4 @@ button:disabled:hover {
 .badge.on-time {
   color: #166534;
   background: #dcfce7;
-}
-
-.badge.intake-accepted {
-  color: #166534;
-  background: #dcfce7;
-}
-
-.badge.intake-accepted-late {
-  color: #92400e;
-  background: #fef3c7;
-}
-
-.badge.intake-deferred-late {
-  color: #991b1b;
-  background: #fee2e2;
 }

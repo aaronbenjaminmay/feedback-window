@@ -311,52 +311,82 @@ const filterAndSortTasks = (
     });
 };
 
-const getIntakeDecisionLabel = (intakeDecision: IntakeDecision) => {
-  if (intakeDecision === "accepted-late") {
-    return "Accepted Late";
-  }
+const getTaskAudience = (task: Task, currentSettings: FeedbackSettings) => {
+  const agencyTeamList = parseAgencyTeamMembers(currentSettings.agencyEmails);
+  const taskIdentifiers = [task.email, task.authorName]
+    .map((identifier) => identifier.trim().toLowerCase())
+    .filter(Boolean);
+  const isInternal = agencyTeamList.some((agencyTeamMember) =>
+    taskIdentifiers.includes(agencyTeamMember)
+  );
 
-  if (intakeDecision === "deferred-late") {
-    return "Deferred Late";
-  }
+  return isInternal ? "Internal" : "Client";
+};
 
-  return "Accepted";
+const getTaskTiming = (task: Task, currentSettings: FeedbackSettings) => {
+  return isCommentAfterEndDate(task.createdAt, currentSettings.feedbackEndDate)
+    ? "Late"
+    : "On Time";
 };
 
 const escapeCsvValue = (value: string) => {
   return `"${value.replace(/"/g, '""')}"`;
 };
 
-const buildTasksCsv = (tasksToExport: Task[]) => {
+const buildTaskDescription = (task: Task) => {
+  const pageName = task.pageName || "";
+  const commentUrl = task.commentUrl || "";
+  const commentDate = formatCommentDate(task.createdAt);
+
+  return [
+    "Original Comment:",
+    task.title,
+    "",
+    "Page:",
+    pageName,
+    "",
+    "Link:",
+    commentUrl,
+    "",
+    "Submitted by:",
+    task.authorName,
+    "",
+    "Date:",
+    commentDate
+  ].join("\n");
+};
+
+const buildTasksCsv = (
+  tasksToExport: Task[],
+  currentSettings: FeedbackSettings
+) => {
   const headers = [
-    "Task ID",
-    "Title",
-    "Original Comment ID",
+    "Name",
+    "Description",
     "Original Commenter",
-    "Email",
     "Comment Date",
     "Page Name",
     "Comment URL",
-    "Status",
-    "Priority",
-    "Assignee",
-    "Intake Decision"
+    "Timing",
+    "Type",
+    "Client-facing?"
   ];
 
-  const rows = tasksToExport.map((task) => [
-    task.id,
-    task.title,
-    task.commentId,
-    task.authorName,
-    task.email,
-    task.createdAt,
-    task.pageName || "",
-    task.commentUrl || "",
-    task.status,
-    task.priority,
-    task.assignee,
-    getIntakeDecisionLabel(task.intakeDecision)
-  ]);
+  const rows = tasksToExport.map((task) => {
+    const audience = getTaskAudience(task, currentSettings);
+
+    return [
+      task.title,
+      buildTaskDescription(task),
+      task.authorName,
+      formatCommentDate(task.createdAt),
+      task.pageName || "",
+      task.commentUrl || "",
+      getTaskTiming(task, currentSettings),
+      "Task",
+      audience === "Client" ? "checked" : ""
+    ];
+  });
 
   return [headers, ...rows]
     .map((row) => row.map(escapeCsvValue).join(","))
@@ -501,22 +531,6 @@ export default function App() {
       ...tasks,
       createTaskFromComment(comment, intakeDecision)
     ];
-    setTasks(updatedTasks);
-    saveTasks(updatedTasks);
-  };
-
-  const updateTask = (taskId: string, updates: Partial<Task>) => {
-    const updatedTasks = tasks.map((task) => {
-      if (task.id !== taskId) {
-        return task;
-      }
-
-      return {
-        ...task,
-        ...updates
-      };
-    });
-
     setTasks(updatedTasks);
     saveTasks(updatedTasks);
   };
@@ -837,7 +851,7 @@ export default function App() {
       return;
     }
 
-    const csv = buildTasksCsv(tasks);
+    const csv = buildTasksCsv(tasks, settings);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1510,94 +1524,66 @@ export default function App() {
               {visibleTasks.length === 0 ? (
                 <p className="empty-message">No tasks match these controls.</p>
               ) : (
-                visibleTasks.map((task) => (
-                  <article className="task-card" key={task.id}>
-                    <div className="task-card-header">
-                      <h3>{task.title}</h3>
-                      <p>{formatCommentDate(task.createdAt)}</p>
-                    </div>
+                visibleTasks.map((task) => {
+                  const taskAudience = getTaskAudience(task, settings);
+                  const taskTiming = getTaskTiming(task, settings);
 
-                    <p className="task-commenter">
-                      Original commenter: {task.authorName} ({task.email})
-                    </p>
-                    {task.pageName && (
-                      <p className="task-commenter">Page: {task.pageName}</p>
-                    )}
-                    {task.commentUrl && (
-                      <a
-                        className="source-link"
-                        href={task.commentUrl}
-                        target="_blank"
-                        rel="noreferrer"
+                  return (
+                    <article className="task-card" key={task.id}>
+                      <div className="task-card-header">
+                        <h3>{task.title}</h3>
+                        <p>{formatCommentDate(task.createdAt)}</p>
+                      </div>
+
+                      <p className="task-commenter">
+                        Original commenter: {task.authorName}
+                      </p>
+                      {task.pageName && (
+                        <p className="task-commenter">Page: {task.pageName}</p>
+                      )}
+                      {task.commentUrl && (
+                        <a
+                          className="source-link"
+                          href={task.commentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View in Figma
+                        </a>
+                      )}
+
+                      <div className="badges">
+                        <span className="badge task-created">Task Created</span>
+                        <span
+                          className={
+                            taskAudience === "Internal"
+                              ? "badge internal"
+                              : "badge client"
+                          }
+                        >
+                          {taskAudience}
+                        </span>
+                        <span
+                          className={
+                            taskTiming === "Late"
+                              ? "badge late"
+                              : "badge on-time"
+                          }
+                        >
+                          {taskTiming}
+                        </span>
+                      </div>
+
+                      <button
+                        className="secondary-button delete-button"
+                        type="button"
+                        onClick={() => deleteTask(task.id)}
                       >
-                        View in Figma
-                      </a>
-                    )}
-
-                    <div className="badges">
-                      <span className={`badge intake-${task.intakeDecision}`}>
-                        {getIntakeDecisionLabel(task.intakeDecision)}
-                      </span>
-                    </div>
-
-                    <div className="task-fields">
-                      <label className="field">
-                        <span>Status</span>
-                        <select
-                          value={task.status}
-                          onChange={(event) =>
-                            updateTask(task.id, {
-                              status: event.target.value as Task["status"]
-                            })
-                          }
-                        >
-                          <option value="new">new</option>
-                          <option value="in-progress">in-progress</option>
-                          <option value="done">done</option>
-                          <option value="deferred">deferred</option>
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span>Priority</span>
-                        <select
-                          value={task.priority}
-                          onChange={(event) =>
-                            updateTask(task.id, {
-                              priority: event.target.value as Task["priority"]
-                            })
-                          }
-                        >
-                          <option value="low">low</option>
-                          <option value="medium">medium</option>
-                          <option value="high">high</option>
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span>Assignee</span>
-                        <input
-                          type="text"
-                          value={task.assignee}
-                          onChange={(event) =>
-                            updateTask(task.id, {
-                              assignee: event.target.value
-                            })
-                          }
-                          placeholder="Name or email"
-                        />
-                      </label>
-                    </div>
-
-                    <button
-                      className="secondary-button delete-button"
-                      type="button"
-                      onClick={() => deleteTask(task.id)}
-                    >
-                      Delete Task
-                    </button>
-                  </article>
-                ))
+                        Delete Task
+                      </button>
+                    </article>
+                  );
+                })
               )}
             </div>
           )}
