@@ -52,6 +52,5 @@ export type FeedbackSettings = {
   agencyEmails: string;
   feedbackStartDate: string;
   feedbackEndDate: string;
-  pageScope: string;
   lateFeedbackMessage: string;
 };

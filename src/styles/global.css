@@ -118,6 +118,10 @@ textarea {
   background: #ffffff;
 }
 
+select {
+  padding-right: 32px;
+}
+
 textarea {
   resize: vertical;
 }

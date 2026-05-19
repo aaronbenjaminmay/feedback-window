@@ -16,7 +16,6 @@ const defaultSettings: FeedbackSettings = {
   agencyEmails: "",
   feedbackStartDate: "",
   feedbackEndDate: "",
-  pageScope: "",
   lateFeedbackMessage: defaultLateFeedbackMessage
 };
 
@@ -139,6 +138,19 @@ const priorityRank: Record<Task["priority"], number> = {
   low: 1
 };
 
+const normalizeSettings = (
+  savedSettings: Partial<FeedbackSettings> & { pageScope?: string }
+): FeedbackSettings => {
+  return {
+    ...defaultSettings,
+    agencyEmails: savedSettings.agencyEmails || "",
+    feedbackStartDate: savedSettings.feedbackStartDate || "",
+    feedbackEndDate: savedSettings.feedbackEndDate || "",
+    lateFeedbackMessage:
+      savedSettings.lateFeedbackMessage || defaultLateFeedbackMessage
+  };
+};
+
 const parseAgencyTeamMembers = (agencyTeamMembers: string) => {
   return agencyTeamMembers
     .split("\n")
@@ -219,6 +231,7 @@ const filterAndSortComments = (
   comments: ClassifiedComment[],
   filter: CommentFilter,
   searchTerm: string,
+  pageFilter: string,
   sort: CommentSort
 ) => {
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
@@ -253,6 +266,13 @@ const filterAndSortComments = (
         .toLowerCase()
         .includes(normalizedSearchTerm);
     })
+    .filter((comment) => {
+      if (!pageFilter) {
+        return true;
+      }
+
+      return comment.pageName === pageFilter;
+    })
     .sort((firstComment, secondComment) => {
       const firstTime = new Date(firstComment.createdAt).getTime();
       const secondTime = new Date(secondComment.createdAt).getTime();
@@ -267,6 +287,7 @@ const filterAndSortTasks = (
   tasksToFilter: Task[],
   filter: TaskFilter,
   searchTerm: string,
+  pageFilter: string,
   sort: TaskSort
 ) => {
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
@@ -292,6 +313,13 @@ const filterAndSortTasks = (
         .join(" ")
         .toLowerCase()
         .includes(normalizedSearchTerm);
+    })
+    .filter((task) => {
+      if (!pageFilter) {
+        return true;
+      }
+
+      return task.pageName === pageFilter;
     })
     .sort((firstTask, secondTask) => {
       if (sort === "priority-high") {
@@ -457,22 +485,23 @@ const buildVisibleCommentThreads = (
   return Array.from(threadMap.values());
 };
 
-const filterCommentThreadsByPageScope = (
-  threads: CommentThread[],
-  pageScope: string
-) => {
-  if (!pageScope) {
-    return threads;
-  }
-
-  return threads.filter((thread) => thread.root.pageName === pageScope);
-};
-
-const getDetectedPageNames = (comments: CommentItem[]) => {
+const getCommentPageNames = (comments: CommentItem[]) => {
   return Array.from(
     new Set(
       comments
         .map((comment) => comment.pageName || "")
+        .filter((pageName) => pageName && pageName !== "Unknown page")
+    )
+  ).sort((firstPageName, secondPageName) =>
+    firstPageName.localeCompare(secondPageName)
+  );
+};
+
+const getTaskPageNames = (tasks: Task[]) => {
+  return Array.from(
+    new Set(
+      tasks
+        .map((task) => task.pageName || "")
         .filter((pageName) => pageName && pageName !== "Unknown page")
     )
   ).sort((firstPageName, secondPageName) =>
@@ -502,9 +531,11 @@ export default function App() {
   );
   const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
   const [commentSearch, setCommentSearch] = useState("");
+  const [commentPageFilter, setCommentPageFilter] = useState("");
   const [commentSort, setCommentSort] = useState<CommentSort>("newest");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
   const [taskSearch, setTaskSearch] = useState("");
+  const [taskPageFilter, setTaskPageFilter] = useState("");
   const [taskSort, setTaskSort] = useState<TaskSort>("newest");
   const [saveMessage, setSaveMessage] = useState("");
   const [isCommentFiltersOpen, setIsCommentFiltersOpen] = useState(false);
@@ -512,10 +543,7 @@ export default function App() {
 
   const loadSettings = () => {
     getSettings().then((savedSettings) => {
-      setSettings({
-        ...defaultSettings,
-        ...savedSettings
-      });
+      setSettings(normalizeSettings(savedSettings));
     });
   };
 
@@ -1068,23 +1096,21 @@ export default function App() {
     classifiedComments,
     commentFilter,
     commentSearch,
+    commentPageFilter,
     commentSort
   );
-  const detectedPageNames =
-    figmaPageNames.length > 0 ? figmaPageNames : getDetectedPageNames(figmaComments);
-  const savedPageScopeNotFound =
-    settings.pageScope && !detectedPageNames.includes(settings.pageScope);
-  const pageScopeOptions = savedPageScopeNotFound
-    ? [settings.pageScope, ...detectedPageNames]
-    : detectedPageNames;
+  const commentPageOptions =
+    figmaPageNames.length > 0 ? figmaPageNames : getCommentPageNames(figmaComments);
+  const taskPageOptions = Array.from(
+    new Set([...commentPageOptions, ...getTaskPageNames(tasks)])
+  ).sort((firstPageName, secondPageName) =>
+    firstPageName.localeCompare(secondPageName)
+  );
   const allVisibleCommentThreads = buildVisibleCommentThreads(
     classifiedComments,
     visibleComments
   );
-  const visibleCommentThreads = filterCommentThreadsByPageScope(
-    allVisibleCommentThreads,
-    settings.pageScope
-  );
+  const visibleCommentThreads = allVisibleCommentThreads;
   const lateClientComments = classifiedComments.filter(
     (comment) => comment.audience === "Client" && comment.timing === "Late"
   );
@@ -1094,7 +1120,13 @@ export default function App() {
       comment.figmaCommentId &&
       !repliedLateCommentIds.includes(comment.figmaCommentId)
   );
-  const visibleTasks = filterAndSortTasks(tasks, taskFilter, taskSearch, taskSort);
+  const visibleTasks = filterAndSortTasks(
+    tasks,
+    taskFilter,
+    taskSearch,
+    taskPageFilter,
+    taskSort
+  );
   const taskCommentIds = tasks.map((task) => task.commentId);
   const reviewWindowStatus = getReviewWindowStatus(
     settings.feedbackStartDate,
@@ -1271,29 +1303,6 @@ export default function App() {
               }
             />
           </label>
-
-          <label className="field">
-            <span>Page scope</span>
-            <select
-              value={settings.pageScope}
-              onChange={(event) =>
-                updateSetting("pageScope", event.target.value)
-              }
-            >
-              <option value="">All pages</option>
-              {pageScopeOptions.map((pageName) => (
-                <option value={pageName} key={pageName}>
-                  {pageName === settings.pageScope && savedPageScopeNotFound
-                    ? `${pageName} (not found)`
-                    : pageName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="helper-text">
-            Limit comments to a specific page. Leave set to All pages to include
-            the full file.
-          </p>
 
           <label className="field">
             <span>Late Feedback Message</span>
@@ -1497,6 +1506,21 @@ export default function App() {
                 </label>
 
                 <label className="field">
+                  <span>Page title</span>
+                  <select
+                    value={commentPageFilter}
+                    onChange={(event) => setCommentPageFilter(event.target.value)}
+                  >
+                    <option value="">All pages</option>
+                    {commentPageOptions.map((pageName) => (
+                      <option value={pageName} key={pageName}>
+                        {pageName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="field">
                   <span>Sort</span>
                   <select
                     value={commentSort}
@@ -1517,17 +1541,9 @@ export default function App() {
             )}
           </section>
 
-          {settings.pageScope && (
-            <p className="helper-text">Filtered to page: {settings.pageScope}</p>
-          )}
-
           <div className="comment-list">
             {visibleCommentThreads.length === 0 ? (
-              <p className="empty-message">
-                {settings.pageScope
-                  ? "No comments found for this page and date range."
-                  : "No comments match these controls."}
-              </p>
+              <p className="empty-message">No comments match these controls.</p>
             ) : (
               visibleCommentThreads.map((thread) => {
                 const comment = thread.root;
@@ -1764,6 +1780,21 @@ export default function App() {
                     onChange={(event) => setTaskSearch(event.target.value)}
                     placeholder="Search title, commenter, owner, or notes"
                   />
+                </label>
+
+                <label className="field">
+                  <span>Page title</span>
+                  <select
+                    value={taskPageFilter}
+                    onChange={(event) => setTaskPageFilter(event.target.value)}
+                  >
+                    <option value="">All pages</option>
+                    {taskPageOptions.map((pageName) => (
+                      <option value={pageName} key={pageName}>
+                        {pageName}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <label className="field">
