@@ -45,6 +45,11 @@ type ClassifiedComment = CommentItem & {
   timing: "Late" | "On-time" | "No cutoff set";
 };
 
+type CommentThread = {
+  root: ClassifiedComment;
+  replies: ClassifiedComment[];
+};
+
 type IntakeDecision = Task["intakeDecision"];
 type ConnectionStatus = "unknown" | "connected" | "not-connected";
 
@@ -292,7 +297,7 @@ const filterAndSortTasks = (
         return true;
       }
 
-      return [task.title, task.authorName, task.email, task.assignee]
+      return [task.title, task.authorName, task.email, task.assignee, task.notes]
         .join(" ")
         .toLowerCase()
         .includes(normalizedSearchTerm);
@@ -346,7 +351,9 @@ const buildTasksCsv = (
     "Figma Comment Link",
     "Feedback Timing",
     "Type",
-    "Client-facing?"
+    "Client-facing?",
+    "Owner",
+    "Notes"
   ];
 
   const rows = tasksToExport.map((task) => {
@@ -361,7 +368,9 @@ const buildTasksCsv = (
       task.commentUrl || "",
       getTaskTiming(task, currentSettings),
       "Task",
-      audience === "Client" ? "checked" : ""
+      audience === "Client" ? "checked" : "",
+      task.assignee,
+      task.notes || ""
     ];
   });
 
@@ -387,8 +396,66 @@ const createTaskFromComment = (
     status: intakeDecision === "deferred-late" ? "deferred" : "new",
     priority: "medium",
     assignee: "",
+    notes: "",
     intakeDecision
   };
+};
+
+const findRootComment = (
+  comment: ClassifiedComment,
+  comments: ClassifiedComment[]
+) => {
+  if (!comment.parentId) {
+    return comment;
+  }
+
+  return (
+    comments.find(
+      (possibleRoot) =>
+        possibleRoot.figmaCommentId === comment.parentId ||
+        possibleRoot.id === comment.parentId ||
+        possibleRoot.id === `figma-${comment.parentId}`
+    ) || comment
+  );
+};
+
+const getThreadReplies = (
+  rootComment: ClassifiedComment,
+  comments: ClassifiedComment[]
+) => {
+  return comments
+    .filter(
+      (comment) =>
+        comment.parentId &&
+        (comment.parentId === rootComment.figmaCommentId ||
+          comment.parentId === rootComment.id ||
+          `figma-${comment.parentId}` === rootComment.id)
+    )
+    .sort(
+      (firstReply, secondReply) =>
+        new Date(firstReply.createdAt).getTime() -
+        new Date(secondReply.createdAt).getTime()
+    );
+};
+
+const buildVisibleCommentThreads = (
+  comments: ClassifiedComment[],
+  visibleFilteredComments: ClassifiedComment[]
+) => {
+  const threadMap = new Map<string, CommentThread>();
+
+  visibleFilteredComments.forEach((comment) => {
+    const root = findRootComment(comment, comments);
+
+    if (!threadMap.has(root.id)) {
+      threadMap.set(root.id, {
+        root,
+        replies: getThreadReplies(root, comments)
+      });
+    }
+  });
+
+  return Array.from(threadMap.values());
 };
 
 export default function App() {
@@ -435,6 +502,8 @@ export default function App() {
       setTasks(
         savedTasks.map((task) => ({
           ...task,
+          assignee: task.assignee || "",
+          notes: task.notes || "",
           intakeDecision: task.intakeDecision || "accepted"
         }))
       );
@@ -514,6 +583,22 @@ export default function App() {
 
   const deleteTask = (taskId: string) => {
     const updatedTasks = tasks.filter((task) => task.id !== taskId);
+
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
+  };
+
+  const updateTask = (taskId: string, updates: Partial<Task>) => {
+    const updatedTasks = tasks.map((task) => {
+      if (task.id !== taskId) {
+        return task;
+      }
+
+      return {
+        ...task,
+        ...updates
+      };
+    });
 
     setTasks(updatedTasks);
     saveTasks(updatedTasks);
@@ -812,6 +897,99 @@ export default function App() {
     }
   };
 
+  const replyToLateComment = async (comment: ClassifiedComment) => {
+    const activeFileKey = currentFileKey || manualFileKey.trim();
+
+    if (!comment.figmaCommentId) {
+      setLateReplyStatus("");
+      setLateReplyError("This comment cannot be replied to from Figma.");
+      return;
+    }
+
+    if (!activeFileKey) {
+      setLateReplyStatus("");
+      setLateReplyError("No Figma file key is available for this file.");
+      return;
+    }
+
+    if (!claimedConnectionId) {
+      setLateReplyStatus("");
+      setLateReplyError(
+        "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Post the saved late feedback message to this comment?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setLateReplyStatus("Posting late-feedback reply...");
+    setLateReplyError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/figma/reply-late-comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          connectionId: claimedConnectionId,
+          fileKey: activeFileKey,
+          commentIds: [comment.figmaCommentId],
+          message: settings.lateFeedbackMessage
+        })
+      });
+      const data = (await response.json().catch(() => ({}))) as
+        ReplyLateCommentsResponse;
+
+      if (response.status === 401) {
+        setLateReplyStatus("");
+        setLateReplyError(
+          "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
+        );
+        return;
+      }
+
+      if (response.status === 403) {
+        setLateReplyStatus("");
+        setLateReplyError(
+          "Figma denied permission to post comment replies. Confirm the OAuth app has file_comments:write."
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        setLateReplyStatus("");
+        setLateReplyError(
+          data.message || data.error || "Could not post the late-feedback reply."
+        );
+        return;
+      }
+
+      const repliedCommentIds = data.repliedCommentIds || [];
+
+      if (!repliedCommentIds.includes(comment.figmaCommentId)) {
+        setLateReplyStatus("");
+        setLateReplyError("Figma could not post the late-feedback reply.");
+        return;
+      }
+
+      setRepliedLateCommentIds((currentIds) =>
+        Array.from(new Set([...currentIds, ...repliedCommentIds]))
+      );
+      setLateReplyStatus("Late reply sent.");
+      setLateReplyError("");
+    } catch {
+      setLateReplyStatus("");
+      setLateReplyError("The OAuth helper could not be reached.");
+    }
+  };
+
   const clearSavedTasks = () => {
     const confirmed = window.confirm("Clear all saved tasks?");
 
@@ -862,6 +1040,10 @@ export default function App() {
     commentSearch,
     commentPageTitleFilter,
     commentSort
+  );
+  const visibleCommentThreads = buildVisibleCommentThreads(
+    classifiedComments,
+    visibleComments
   );
   const lateClientComments = classifiedComments.filter(
     (comment) => comment.audience === "Client" && comment.timing === "Late"
@@ -1285,13 +1467,20 @@ export default function App() {
           </section>
 
           <div className="comment-list">
-            {visibleComments.length === 0 ? (
+            {visibleCommentThreads.length === 0 ? (
               <p className="empty-message">No comments match these controls.</p>
             ) : (
-              visibleComments.map((comment) => {
+              visibleCommentThreads.map((thread) => {
+                const comment = thread.root;
                 const taskAlreadyExists = taskCommentIds.includes(comment.id);
                 const isClientLate =
                   comment.audience === "Client" && comment.timing === "Late";
+                const canReplyWithLateMessage =
+                  isClientLate && !comment.parentId && Boolean(comment.figmaCommentId);
+                const lateReplyAlreadySent = Boolean(
+                  comment.figmaCommentId &&
+                    repliedLateCommentIds.includes(comment.figmaCommentId)
+                );
 
                 return (
                   <article
@@ -1356,6 +1545,26 @@ export default function App() {
                       </div>
                     )}
 
+                    {thread.replies.length > 0 && (
+                      <details className="thread-accordion">
+                        <summary>
+                          View thread ({thread.replies.length}{" "}
+                          {thread.replies.length === 1 ? "reply" : "replies"})
+                        </summary>
+                        <div className="thread-replies">
+                          {thread.replies.map((reply) => (
+                            <div className="thread-reply" key={reply.id}>
+                              <div className="thread-reply-header">
+                                <strong>{reply.authorName}</strong>
+                                <span>{formatCommentDate(reply.createdAt)}</span>
+                              </div>
+                              <p>{reply.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+
                     {!taskAlreadyExists && (
                       isClientLate ? (
                         <div className="late-actions">
@@ -1389,6 +1598,19 @@ export default function App() {
                           Convert to Task
                         </button>
                       )
+                    )}
+
+                    {canReplyWithLateMessage && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => replyToLateComment(comment)}
+                        disabled={lateReplyAlreadySent}
+                      >
+                        {lateReplyAlreadySent
+                          ? "Late reply sent"
+                          : "Reply with late message"}
+                      </button>
                     )}
                   </article>
                 );
@@ -1469,7 +1691,7 @@ export default function App() {
                     type="search"
                     value={taskSearch}
                     onChange={(event) => setTaskSearch(event.target.value)}
-                    placeholder="Search title, commenter, email, or assignee"
+                    placeholder="Search title, commenter, owner, or notes"
                   />
                 </label>
 
@@ -1549,6 +1771,36 @@ export default function App() {
                         >
                           {taskTiming}
                         </span>
+                      </div>
+
+                      <div className="task-edit-fields">
+                        <label className="field">
+                          <span>Owner</span>
+                          <input
+                            type="text"
+                            value={task.assignee}
+                            onChange={(event) =>
+                              updateTask(task.id, {
+                                assignee: event.target.value
+                              })
+                            }
+                            placeholder="Add owner"
+                          />
+                        </label>
+
+                        <label className="field">
+                          <span>Notes</span>
+                          <textarea
+                            value={task.notes || ""}
+                            onChange={(event) =>
+                              updateTask(task.id, {
+                                notes: event.target.value
+                              })
+                            }
+                            placeholder="Add notes or context"
+                            rows={3}
+                          />
+                        </label>
                       </div>
 
                       <button

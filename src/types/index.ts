@@ -18,6 +18,7 @@ export type Task = {
   status: "new" | "in-progress" | "done" | "deferred";
   priority: "low" | "medium" | "high";
   assignee: string;
+  notes?: string;
   intakeDecision: "accepted" | "accepted-late" | "deferred-late";
   pageName?: string;
   commentUrl?: string;

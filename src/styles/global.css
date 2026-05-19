@@ -519,6 +519,44 @@ button:disabled:hover {
   margin-top: 0;
 }
 
+.thread-accordion {
+  border-top: 1px solid #e5e9f0;
+  padding-top: 10px;
+}
+
+.thread-accordion summary {
+  color: #475467;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.thread-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.thread-reply {
+  border-left: 2px solid #d8dee8;
+  padding-left: 10px;
+}
+
+.thread-reply-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.thread-reply-header strong {
+  color: #1f2933;
+}
+
 .task-commenter,
 .empty-message,
 .helper-text,
@@ -551,6 +589,13 @@ button:disabled:hover {
   margin: 0;
   color: #991b1b;
   font-weight: 700;
+}
+
+.task-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
 }
 
 .badges {
