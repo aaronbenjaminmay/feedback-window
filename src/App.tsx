@@ -16,6 +16,7 @@ const defaultSettings: FeedbackSettings = {
   agencyEmails: "",
   feedbackStartDate: "",
   feedbackEndDate: "",
+  pageScope: "",
   lateFeedbackMessage: defaultLateFeedbackMessage
 };
 
@@ -75,6 +76,7 @@ type FigmaApiComment = {
 
 type FigmaCommentsResponse = {
   comments?: FigmaApiComment[];
+  pages?: string[];
 };
 
 type CurrentFileKeyMessage = {
@@ -217,11 +219,9 @@ const filterAndSortComments = (
   comments: ClassifiedComment[],
   filter: CommentFilter,
   searchTerm: string,
-  pageTitleTerm: string,
   sort: CommentSort
 ) => {
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
-  const normalizedPageTitleTerm = pageTitleTerm.trim().toLowerCase();
 
   return comments
     .filter((comment) => {
@@ -252,15 +252,6 @@ const filterAndSortComments = (
         .join(" ")
         .toLowerCase()
         .includes(normalizedSearchTerm);
-    })
-    .filter((comment) => {
-      if (!normalizedPageTitleTerm) {
-        return true;
-      }
-
-      return (comment.pageName || "")
-        .toLowerCase()
-        .includes(normalizedPageTitleTerm);
     })
     .sort((firstComment, secondComment) => {
       const firstTime = new Date(firstComment.createdAt).getTime();
@@ -381,7 +372,8 @@ const buildTasksCsv = (
 
 const createTaskFromComment = (
   comment: CommentItem,
-  intakeDecision: IntakeDecision
+  intakeDecision: IntakeDecision,
+  replies: CommentItem[] = []
 ): Task => {
   return {
     id: `task-${comment.id}`,
@@ -397,6 +389,13 @@ const createTaskFromComment = (
     priority: "medium",
     assignee: "",
     notes: "",
+    rootCommentText: comment.message,
+    replies: replies.map((reply) => ({
+      id: reply.id,
+      authorName: reply.authorName,
+      createdAt: reply.createdAt,
+      message: reply.message
+    })),
     intakeDecision
   };
 };
@@ -458,11 +457,35 @@ const buildVisibleCommentThreads = (
   return Array.from(threadMap.values());
 };
 
+const filterCommentThreadsByPageScope = (
+  threads: CommentThread[],
+  pageScope: string
+) => {
+  if (!pageScope) {
+    return threads;
+  }
+
+  return threads.filter((thread) => thread.root.pageName === pageScope);
+};
+
+const getDetectedPageNames = (comments: CommentItem[]) => {
+  return Array.from(
+    new Set(
+      comments
+        .map((comment) => comment.pageName || "")
+        .filter((pageName) => pageName && pageName !== "Unknown page")
+    )
+  ).sort((firstPageName, secondPageName) =>
+    firstPageName.localeCompare(secondPageName)
+  );
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
   const [settings, setSettings] = useState<FeedbackSettings>(defaultSettings);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [figmaComments, setFigmaComments] = useState<CommentItem[]>([]);
+  const [figmaPageNames, setFigmaPageNames] = useState<string[]>([]);
   const [currentFileKey, setCurrentFileKey] = useState("");
   const [manualFileKey, setManualFileKey] = useState("");
   const [connectionCode, setConnectionCode] = useState("");
@@ -479,7 +502,6 @@ export default function App() {
   );
   const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
   const [commentSearch, setCommentSearch] = useState("");
-  const [commentPageTitleFilter, setCommentPageTitleFilter] = useState("");
   const [commentSort, setCommentSort] = useState<CommentSort>("newest");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
   const [taskSearch, setTaskSearch] = useState("");
@@ -504,6 +526,8 @@ export default function App() {
           ...task,
           assignee: task.assignee || "",
           notes: task.notes || "",
+          rootCommentText: task.rootCommentText || task.title,
+          replies: task.replies || [],
           intakeDecision: task.intakeDecision || "accepted"
         }))
       );
@@ -565,7 +589,8 @@ export default function App() {
 
   const convertCommentToTask = (
     comment: CommentItem,
-    intakeDecision: IntakeDecision
+    intakeDecision: IntakeDecision,
+    replies: CommentItem[] = []
   ) => {
     const taskAlreadyExists = tasks.some((task) => task.commentId === comment.id);
 
@@ -575,7 +600,7 @@ export default function App() {
 
     const updatedTasks = [
       ...tasks,
-      createTaskFromComment(comment, intakeDecision)
+      createTaskFromComment(comment, intakeDecision, replies)
     ];
     setTasks(updatedTasks);
     saveTasks(updatedTasks);
@@ -719,6 +744,7 @@ export default function App() {
 
       if (response.status === 401) {
         setFigmaComments([]);
+        setFigmaPageNames([]);
         setFigmaFetchStatus("");
         setFigmaFetchError(
           "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
@@ -728,6 +754,7 @@ export default function App() {
 
       if (response.status === 403) {
         setFigmaComments([]);
+        setFigmaPageNames([]);
         setFigmaFetchStatus("");
         setFigmaFetchError(
           "Figma denied API access to this file. You may be able to view it in Figma, but this OAuth app does not have API access to the file."
@@ -739,6 +766,7 @@ export default function App() {
         const errorData = (await response.json().catch(() => ({}))) as
           FigmaProxyError;
         setFigmaComments([]);
+        setFigmaPageNames([]);
         setFigmaFetchStatus("");
         setFigmaFetchError(
           errorData.message ||
@@ -749,6 +777,7 @@ export default function App() {
       }
 
       const data = (await response.json()) as FigmaCommentsResponse;
+      setFigmaPageNames(data.pages || []);
       const normalizedComments: CommentItem[] = (data.comments || []).map(
         (comment, index) => {
           const author = comment.author || comment.user;
@@ -775,6 +804,7 @@ export default function App() {
       setFigmaFetchStatus("");
     } catch {
       setFigmaComments([]);
+      setFigmaPageNames([]);
       setFigmaFetchStatus("");
       setFigmaFetchError("The OAuth helper could not be reached.");
     } finally {
@@ -1038,12 +1068,22 @@ export default function App() {
     classifiedComments,
     commentFilter,
     commentSearch,
-    commentPageTitleFilter,
     commentSort
   );
-  const visibleCommentThreads = buildVisibleCommentThreads(
+  const detectedPageNames =
+    figmaPageNames.length > 0 ? figmaPageNames : getDetectedPageNames(figmaComments);
+  const savedPageScopeNotFound =
+    settings.pageScope && !detectedPageNames.includes(settings.pageScope);
+  const pageScopeOptions = savedPageScopeNotFound
+    ? [settings.pageScope, ...detectedPageNames]
+    : detectedPageNames;
+  const allVisibleCommentThreads = buildVisibleCommentThreads(
     classifiedComments,
     visibleComments
+  );
+  const visibleCommentThreads = filterCommentThreadsByPageScope(
+    allVisibleCommentThreads,
+    settings.pageScope
   );
   const lateClientComments = classifiedComments.filter(
     (comment) => comment.audience === "Client" && comment.timing === "Late"
@@ -1231,6 +1271,29 @@ export default function App() {
               }
             />
           </label>
+
+          <label className="field">
+            <span>Page scope</span>
+            <select
+              value={settings.pageScope}
+              onChange={(event) =>
+                updateSetting("pageScope", event.target.value)
+              }
+            >
+              <option value="">All pages</option>
+              {pageScopeOptions.map((pageName) => (
+                <option value={pageName} key={pageName}>
+                  {pageName === settings.pageScope && savedPageScopeNotFound
+                    ? `${pageName} (not found)`
+                    : pageName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="helper-text">
+            Limit comments to a specific page. Leave set to All pages to include
+            the full file.
+          </p>
 
           <label className="field">
             <span>Late Feedback Message</span>
@@ -1434,18 +1497,6 @@ export default function App() {
                 </label>
 
                 <label className="field">
-                  <span>Page title</span>
-                  <input
-                    type="search"
-                    value={commentPageTitleFilter}
-                    onChange={(event) =>
-                      setCommentPageTitleFilter(event.target.value)
-                    }
-                    placeholder="Filter by page name"
-                  />
-                </label>
-
-                <label className="field">
                   <span>Sort</span>
                   <select
                     value={commentSort}
@@ -1466,9 +1517,17 @@ export default function App() {
             )}
           </section>
 
+          {settings.pageScope && (
+            <p className="helper-text">Filtered to page: {settings.pageScope}</p>
+          )}
+
           <div className="comment-list">
             {visibleCommentThreads.length === 0 ? (
-              <p className="empty-message">No comments match these controls.</p>
+              <p className="empty-message">
+                {settings.pageScope
+                  ? "No comments found for this page and date range."
+                  : "No comments match these controls."}
+              </p>
             ) : (
               visibleCommentThreads.map((thread) => {
                 const comment = thread.root;
@@ -1572,7 +1631,11 @@ export default function App() {
                             className="secondary-button"
                             type="button"
                             onClick={() =>
-                              convertCommentToTask(comment, "accepted-late")
+                              convertCommentToTask(
+                                comment,
+                                "accepted-late",
+                                thread.replies
+                              )
                             }
                           >
                             Accept Anyway
@@ -1581,7 +1644,11 @@ export default function App() {
                             className="secondary-button defer-button"
                             type="button"
                             onClick={() =>
-                              convertCommentToTask(comment, "deferred-late")
+                              convertCommentToTask(
+                                comment,
+                                "deferred-late",
+                                thread.replies
+                              )
                             }
                           >
                             Defer
@@ -1592,7 +1659,11 @@ export default function App() {
                           className="secondary-button"
                           type="button"
                           onClick={() =>
-                            convertCommentToTask(comment, "accepted")
+                            convertCommentToTask(
+                              comment,
+                              "accepted",
+                              thread.replies
+                            )
                           }
                         >
                           Convert to Task
@@ -1772,6 +1843,34 @@ export default function App() {
                           {taskTiming}
                         </span>
                       </div>
+
+                      {task.replies && task.replies.length > 0 && (
+                        <details className="thread-accordion">
+                          <summary>
+                            View original thread ({task.replies.length}{" "}
+                            {task.replies.length === 1 ? "reply" : "replies"})
+                          </summary>
+                          <div className="thread-replies">
+                            <div className="thread-reply root-thread-comment">
+                              <div className="thread-reply-header">
+                                <strong>{task.authorName}</strong>
+                                <span>{formatCommentDate(task.createdAt)}</span>
+                              </div>
+                              <p>{task.rootCommentText || task.title}</p>
+                            </div>
+
+                            {task.replies.map((reply) => (
+                              <div className="thread-reply" key={reply.id}>
+                                <div className="thread-reply-header">
+                                  <strong>{reply.authorName}</strong>
+                                  <span>{formatCommentDate(reply.createdAt)}</span>
+                                </div>
+                                <p>{reply.message}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
 
                       <div className="task-edit-fields">
                         <label className="field">

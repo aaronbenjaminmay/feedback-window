@@ -23,6 +23,15 @@ export type Task = {
   pageName?: string;
   commentUrl?: string;
   nodeId?: string;
+  rootCommentText?: string;
+  replies?: TaskReply[];
+};
+
+export type TaskReply = {
+  id: string;
+  authorName: string;
+  createdAt: string;
+  message: string;
 };
 
 export type CommentItem = {
@@ -43,5 +52,6 @@ export type FeedbackSettings = {
   agencyEmails: string;
   feedbackStartDate: string;
   feedbackEndDate: string;
+  pageScope: string;
   lateFeedbackMessage: string;
 };

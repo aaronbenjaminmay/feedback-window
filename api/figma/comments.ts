@@ -113,6 +113,25 @@ const buildNodePageMap = (fileBody: FigmaFileResponse | null) => {
   return nodePageMap;
 };
 
+const getFilePageNames = (fileBody: FigmaFileResponse | null) => {
+  const documentNode = fileBody?.document;
+
+  if (!documentNode) {
+    return [];
+  }
+
+  if (documentNode.type === "CANVAS") {
+    return [documentNode.name || "Unknown page"];
+  }
+
+  return (
+    documentNode.children
+      ?.filter((node) => node.type === "CANVAS")
+      .map((canvasNode) => canvasNode.name || "Unknown page")
+      .filter((pageName) => pageName !== "Unknown page") || []
+  );
+};
+
 const extractNodeIdFromValue = (value: unknown): string => {
   if (!value) {
     return "";
@@ -215,7 +234,8 @@ const buildCommentUrl = (fileKey: string, nodeId: string, commentId: string) => 
 const enrichCommentsWithLocation = (
   commentsBody: unknown,
   nodePageMap: Map<string, string>,
-  fileKey: string
+  fileKey: string,
+  pageNames: string[]
 ) => {
   if (!commentsBody || typeof commentsBody !== "object") {
     return commentsBody;
@@ -229,6 +249,7 @@ const enrichCommentsWithLocation = (
 
   return {
     ...body,
+    pages: pageNames,
     comments: body.comments.map((comment) => {
       const extractedNodeId = extractNodeId(comment);
       const lookupNodeId = extractedNodeId
@@ -304,6 +325,7 @@ export default async function handler(
     }
 
     let nodePageMap = new Map<string, string>();
+    let pageNames: string[] = [];
 
     try {
       const fileResponse = await fetch(
@@ -320,6 +342,7 @@ export default async function handler(
 
       if (fileResponse.ok) {
         nodePageMap = buildNodePageMap(fileBody);
+        pageNames = getFilePageNames(fileBody);
       }
     } catch {
       nodePageMap = new Map<string, string>();
@@ -327,7 +350,9 @@ export default async function handler(
 
     response
       .status(commentsResponse.status)
-      .json(enrichCommentsWithLocation(commentsBody, nodePageMap, fileKey));
+      .json(
+        enrichCommentsWithLocation(commentsBody, nodePageMap, fileKey, pageNames)
+      );
   } catch {
     response.status(502).json({
       error: "Could not fetch comments from Figma."

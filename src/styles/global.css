@@ -543,6 +543,10 @@ button:disabled:hover {
   padding-left: 10px;
 }
 
+.root-thread-comment {
+  border-left-color: #2563eb;
+}
+
 .thread-reply-header {
   display: flex;
   justify-content: space-between;
