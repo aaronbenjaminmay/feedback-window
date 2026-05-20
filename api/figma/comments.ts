@@ -31,9 +31,15 @@ type FigmaFileResponse = {
 
 type FigmaComment = {
   id?: string;
+  parent_id?: string;
   client_meta?: unknown;
   node_id?: string;
   nodeId?: string;
+  resolved?: unknown;
+  resolved_at?: unknown;
+  resolvedAt?: unknown;
+  is_resolved?: unknown;
+  isResolved?: unknown;
   pageName?: string;
   commentUrl?: string;
 };
@@ -231,6 +237,52 @@ const buildCommentUrl = (fileKey: string, nodeId: string, commentId: string) => 
   )}#${encodeURIComponent(commentId)}`;
 };
 
+const isResolvedValue = (value: unknown) => {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  return true;
+};
+
+const isResolvedComment = (comment: FigmaComment) => {
+  return (
+    isResolvedValue(comment.resolved_at) ||
+    isResolvedValue(comment.resolvedAt) ||
+    isResolvedValue(comment.resolved) ||
+    isResolvedValue(comment.is_resolved) ||
+    isResolvedValue(comment.isResolved)
+  );
+};
+
+const getActiveComments = (comments: FigmaComment[]) => {
+  const resolvedRootCommentIds = new Set(
+    comments
+      .filter((comment) => !comment.parent_id && comment.id && isResolvedComment(comment))
+      .map((comment) => comment.id)
+  );
+
+  return comments.filter((comment) => {
+    if (isResolvedComment(comment)) {
+      return false;
+    }
+
+    if (comment.parent_id && resolvedRootCommentIds.has(comment.parent_id)) {
+      return false;
+    }
+
+    return true;
+  });
+};
+
 const enrichCommentsWithLocation = (
   commentsBody: unknown,
   nodePageMap: Map<string, string>,
@@ -250,7 +302,7 @@ const enrichCommentsWithLocation = (
   return {
     ...body,
     pages: pageNames,
-    comments: body.comments.map((comment) => {
+    comments: getActiveComments(body.comments).map((comment) => {
       const extractedNodeId = extractNodeId(comment);
       const lookupNodeId = extractedNodeId
         ? normalizeNodeIdForLookup(extractedNodeId)

@@ -55,6 +55,14 @@ textarea {
   gap: 8px;
 }
 
+.sidebar-version {
+  margin: auto 12px 0;
+  color: #98a2b3;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .nav-item {
   width: 100%;
   border: 1px solid transparent;
