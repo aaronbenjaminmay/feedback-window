@@ -139,6 +139,43 @@ const priorityRank: Record<Task["priority"], number> = {
   low: 1
 };
 
+const renderNavIcon = (tab: ActiveTab) => {
+  if (tab === "dashboard") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2.5" y="2.5" width="4" height="4" rx="0.75" />
+        <rect x="9.5" y="2.5" width="4" height="4" rx="0.75" />
+        <rect x="2.5" y="9.5" width="4" height="4" rx="0.75" />
+        <rect x="9.5" y="9.5" width="4" height="4" rx="0.75" />
+      </svg>
+    );
+  }
+
+  if (tab === "setup") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="2.25" />
+        <path d="M8 1.75v1.5M8 12.75v1.5M3.58 3.58l1.06 1.06M11.36 11.36l1.06 1.06M1.75 8h1.5M12.75 8h1.5M3.58 12.42l1.06-1.06M11.36 4.64l1.06-1.06" />
+      </svg>
+    );
+  }
+
+  if (tab === "comments") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3.25 3.5h9.5a1.5 1.5 0 0 1 1.5 1.5v5.5a1.5 1.5 0 0 1-1.5 1.5H7.25L4 14v-2H3.25a1.5 1.5 0 0 1-1.5-1.5V5a1.5 1.5 0 0 1 1.5-1.5Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6.25 4h7M6.25 8h7M6.25 12h7" />
+      <path d="m2.25 4 1 1 1.75-2M2.25 8l1 1 1.75-2M2.25 12l1 1 1.75-2" />
+    </svg>
+  );
+};
+
 const normalizeSettings = (
   savedSettings: Partial<FeedbackSettings> & { pageScope?: string }
 ): FeedbackSettings => {
@@ -1194,28 +1231,32 @@ export default function App() {
             type="button"
             onClick={() => openTab("dashboard")}
           >
-            Dashboard
+            <span className="nav-icon">{renderNavIcon("dashboard")}</span>
+            <span className="nav-label">Dashboard</span>
           </button>
           <button
             className={activeTab === "setup" ? "nav-item active" : "nav-item"}
             type="button"
             onClick={() => openTab("setup")}
           >
-            Setup
+            <span className="nav-icon">{renderNavIcon("setup")}</span>
+            <span className="nav-label">Setup</span>
           </button>
           <button
             className={activeTab === "comments" ? "nav-item active" : "nav-item"}
             type="button"
             onClick={() => openTab("comments")}
           >
-            Comments
+            <span className="nav-icon">{renderNavIcon("comments")}</span>
+            <span className="nav-label">Comments</span>
           </button>
           <button
             className={activeTab === "tasks" ? "nav-item active" : "nav-item"}
             type="button"
             onClick={() => openTab("tasks")}
           >
-            Tasks
+            <span className="nav-icon">{renderNavIcon("tasks")}</span>
+            <span className="nav-label">Tasks</span>
           </button>
         </nav>
 
@@ -1546,7 +1587,9 @@ export default function App() {
 
           <div className="comment-list">
             {visibleCommentThreads.length === 0 ? (
-              <p className="empty-message">No comments match these controls.</p>
+              <p className="empty-message">
+                No comments match the current filters.
+              </p>
             ) : (
               visibleCommentThreads.map((thread) => {
                 const comment = thread.root;
@@ -1822,11 +1865,15 @@ export default function App() {
           </section>
 
           {tasks.length === 0 ? (
-            <p className="empty-message">No tasks created yet.</p>
+            <p className="empty-message">
+              No tasks yet — convert a comment to get started
+            </p>
           ) : (
             <div className="task-list">
               {visibleTasks.length === 0 ? (
-                <p className="empty-message">No tasks match these controls.</p>
+                <p className="empty-message">
+                  No tasks match the current filters.
+                </p>
               ) : (
                 visibleTasks.map((task) => {
                   const taskAudience = getTaskAudience(task, settings);
