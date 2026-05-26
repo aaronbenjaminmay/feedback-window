@@ -20,7 +20,7 @@ const defaultSettings: FeedbackSettings = {
 };
 
 const API_BASE_URL = "https://feedback-window.vercel.app";
-const APP_VERSION = "0.1.0";
+const APP_VERSION = "1.0.2";
 
 type ActiveTab = "dashboard" | "setup" | "comments" | "tasks";
 type ReviewWindowStatus = "Not configured" | "Open" | "Closed" | "Upcoming";
@@ -202,6 +202,17 @@ const isCommentAfterEndDate = (createdAt: string, feedbackEndDate: string) => {
   }
 
   return createdAt.slice(0, 10) > feedbackEndDate;
+};
+
+const isRootCommentBeforeStartDate = (
+  comment: CommentItem,
+  feedbackStartDate: string
+) => {
+  if (!feedbackStartDate || comment.parentId) {
+    return false;
+  }
+
+  return comment.createdAt.slice(0, 10) < feedbackStartDate;
 };
 
 const formatCommentDate = (createdAt: string) => {
@@ -535,6 +546,20 @@ const getCommentPageNames = (comments: CommentItem[]) => {
   );
 };
 
+const getPageOptions = (apiPages: string[], comments: CommentItem[]) => {
+  const pageNames = new Set<string>();
+
+  apiPages.forEach((pageName) => {
+    if (pageName && pageName !== "Unknown page") {
+      pageNames.add(pageName);
+    }
+  });
+
+  getCommentPageNames(comments).forEach((pageName) => pageNames.add(pageName));
+
+  return Array.from(pageNames);
+};
+
 const getTaskPageNames = (tasks: Task[]) => {
   return Array.from(
     new Set(
@@ -562,6 +587,8 @@ export default function App() {
   const [isFetchingFigmaComments, setIsFetchingFigmaComments] = useState(false);
   const [figmaFetchStatus, setFigmaFetchStatus] = useState("");
   const [figmaFetchError, setFigmaFetchError] = useState("");
+  const [olderCommentsExcludedCount, setOlderCommentsExcludedCount] =
+    useState(0);
   const [lateReplyStatus, setLateReplyStatus] = useState("");
   const [lateReplyError, setLateReplyError] = useState("");
   const [repliedLateCommentIds, setRepliedLateCommentIds] = useState<string[]>(
@@ -811,6 +838,7 @@ export default function App() {
       if (response.status === 401) {
         setFigmaComments([]);
         setFigmaPageNames([]);
+        setOlderCommentsExcludedCount(0);
         setFigmaFetchStatus("");
         setFigmaFetchError(
           "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
@@ -821,6 +849,7 @@ export default function App() {
       if (response.status === 403) {
         setFigmaComments([]);
         setFigmaPageNames([]);
+        setOlderCommentsExcludedCount(0);
         setFigmaFetchStatus("");
         setFigmaFetchError(
           "Figma denied API access to this file. You may be able to view it in Figma, but this OAuth app does not have API access to the file."
@@ -833,6 +862,7 @@ export default function App() {
           FigmaProxyError;
         setFigmaComments([]);
         setFigmaPageNames([]);
+        setOlderCommentsExcludedCount(0);
         setFigmaFetchStatus("");
         setFigmaFetchError(
           errorData.message ||
@@ -843,7 +873,6 @@ export default function App() {
       }
 
       const data = (await response.json()) as FigmaCommentsResponse;
-      setFigmaPageNames(data.pages || []);
       const normalizedComments: CommentItem[] = (data.comments || []).map(
         (comment, index) => {
           const author = comment.author || comment.user;
@@ -865,12 +894,40 @@ export default function App() {
           };
         }
       );
+      const excludedOlderRootComments = normalizedComments.filter((comment) =>
+        isRootCommentBeforeStartDate(comment, settings.feedbackStartDate)
+      );
+      const excludedRootCommentIds = new Set(
+        excludedOlderRootComments.flatMap((comment) =>
+          [comment.figmaCommentId, comment.id].filter(
+            (commentId): commentId is string => Boolean(commentId)
+          )
+        )
+      );
+      const startDateFilteredComments = normalizedComments.filter((comment) => {
+        if (isRootCommentBeforeStartDate(comment, settings.feedbackStartDate)) {
+          return false;
+        }
 
-      setFigmaComments(normalizedComments);
+        if (
+          comment.parentId &&
+          (excludedRootCommentIds.has(comment.parentId) ||
+            excludedRootCommentIds.has(`figma-${comment.parentId}`))
+        ) {
+          return false;
+        }
+
+        return true;
+      });
+
+      setFigmaPageNames(getPageOptions(data.pages || [], normalizedComments));
+      setFigmaComments(startDateFilteredComments);
+      setOlderCommentsExcludedCount(excludedOlderRootComments.length);
       setFigmaFetchStatus("");
     } catch {
       setFigmaComments([]);
       setFigmaPageNames([]);
+      setOlderCommentsExcludedCount(0);
       setFigmaFetchStatus("");
       setFigmaFetchError("The OAuth helper could not be reached.");
     } finally {
@@ -1469,6 +1526,19 @@ export default function App() {
               >
                 Load Comments from This File
               </button>
+
+              <p className="helper-text">
+                Only comments from the feedback start date onward will be
+                imported.
+              </p>
+
+              {olderCommentsExcludedCount > 0 && (
+                <p className="helper-text">
+                  {olderCommentsExcludedCount} older comment
+                  {olderCommentsExcludedCount === 1 ? " was" : "s were"}{" "}
+                  excluded based on the feedback start date.
+                </p>
+              )}
 
               {figmaFetchStatus && (
                 <p className="helper-text">{figmaFetchStatus}</p>
