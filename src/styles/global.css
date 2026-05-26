@@ -736,6 +736,7 @@ button:disabled:hover {
 .task-commenter,
 .empty-message,
 .helper-text,
+.warning-message,
 .error-message {
   color: var(--text-secondary);
   font-size: 12px;
@@ -765,6 +766,18 @@ button:disabled:hover {
   margin: 0;
   color: var(--danger);
   font-weight: 700;
+}
+
+.warning-message {
+  margin: 0;
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.show-more-button {
+  align-self: center;
+  width: auto;
+  min-width: 160px;
 }
 
 .task-edit-fields {

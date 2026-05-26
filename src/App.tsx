@@ -20,7 +20,9 @@ const defaultSettings: FeedbackSettings = {
 };
 
 const API_BASE_URL = "https://feedback-window.vercel.app";
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
+const COMMENT_RENDER_BATCH_SIZE = 50;
+const COMMENTS_CACHE_PREFIX = "feedback-window-comments";
 
 type ActiveTab = "dashboard" | "setup" | "comments" | "tasks";
 type ReviewWindowStatus = "Not configured" | "Open" | "Closed" | "Upcoming";
@@ -77,6 +79,14 @@ type FigmaApiComment = {
 type FigmaCommentsResponse = {
   comments?: FigmaApiComment[];
   pages?: string[];
+};
+
+type CachedCommentsResponse = {
+  comments: CommentItem[];
+  pages: string[];
+  timestamp: number;
+  feedbackStartDate: string;
+  olderCommentsExcludedCount?: number;
 };
 
 type CurrentFileKeyMessage = {
@@ -560,6 +570,121 @@ const getPageOptions = (apiPages: string[], comments: CommentItem[]) => {
   return Array.from(pageNames);
 };
 
+const normalizeFigmaApiComments = (comments: FigmaApiComment[] = []) => {
+  return comments.map((comment, index) => {
+    const author = comment.author || comment.user;
+    const figmaCommentId = comment.id || "";
+
+    return {
+      id: `figma-${figmaCommentId || index}`,
+      figmaCommentId,
+      authorName: author?.name || author?.handle || "Unknown Figma user",
+      email: author?.email || "",
+      handle: author?.handle,
+      parentId: comment.parent_id || undefined,
+      message: comment.message || "",
+      createdAt: comment.created_at || new Date().toISOString(),
+      pageName: comment.pageName || "Unknown page",
+      commentUrl: comment.commentUrl,
+      nodeId: comment.nodeId
+    };
+  });
+};
+
+const filterCommentsByFeedbackStartDate = (
+  comments: CommentItem[],
+  feedbackStartDate: string
+) => {
+  const excludedOlderRootComments = comments.filter((comment) =>
+    isRootCommentBeforeStartDate(comment, feedbackStartDate)
+  );
+  const excludedRootCommentIds = new Set(
+    excludedOlderRootComments.flatMap((comment) =>
+      [comment.figmaCommentId, comment.id].filter(
+        (commentId): commentId is string => Boolean(commentId)
+      )
+    )
+  );
+  const filteredComments = comments.filter((comment) => {
+    if (isRootCommentBeforeStartDate(comment, feedbackStartDate)) {
+      return false;
+    }
+
+    if (
+      comment.parentId &&
+      (excludedRootCommentIds.has(comment.parentId) ||
+        excludedRootCommentIds.has(`figma-${comment.parentId}`))
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return {
+    filteredComments,
+    olderCommentsExcludedCount: excludedOlderRootComments.length
+  };
+};
+
+const getCommentsCacheKey = (fileKey: string) => {
+  return `${COMMENTS_CACHE_PREFIX}:${encodeURIComponent(fileKey)}`;
+};
+
+const readCachedComments = (
+  fileKey: string,
+  feedbackStartDate: string
+): CachedCommentsResponse | null => {
+  try {
+    const cachedValue = window.localStorage.getItem(getCommentsCacheKey(fileKey));
+
+    if (!cachedValue) {
+      return null;
+    }
+
+    const cachedComments = JSON.parse(cachedValue) as CachedCommentsResponse;
+
+    if (cachedComments.feedbackStartDate !== feedbackStartDate) {
+      return null;
+    }
+
+    return cachedComments;
+  } catch {
+    return null;
+  }
+};
+
+const writeCachedComments = (
+  fileKey: string,
+  comments: CommentItem[],
+  pages: string[],
+  feedbackStartDate: string,
+  olderCommentsExcludedCount: number
+) => {
+  try {
+    const cachedComments: CachedCommentsResponse = {
+      comments,
+      pages,
+      timestamp: Date.now(),
+      feedbackStartDate,
+      olderCommentsExcludedCount
+    };
+
+    window.localStorage.setItem(
+      getCommentsCacheKey(fileKey),
+      JSON.stringify(cachedComments)
+    );
+  } catch {
+    // Caching is best effort; the plugin should keep working without it.
+  }
+};
+
+const waitForLoadingStep = () => {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 150);
+  });
+};
+
 const getTaskPageNames = (tasks: Task[]) => {
   return Array.from(
     new Set(
@@ -586,6 +711,7 @@ export default function App() {
     useState<ConnectionStatus>("unknown");
   const [isFetchingFigmaComments, setIsFetchingFigmaComments] = useState(false);
   const [figmaFetchStatus, setFigmaFetchStatus] = useState("");
+  const [figmaFetchWarning, setFigmaFetchWarning] = useState("");
   const [figmaFetchError, setFigmaFetchError] = useState("");
   const [olderCommentsExcludedCount, setOlderCommentsExcludedCount] =
     useState(0);
@@ -605,6 +731,9 @@ export default function App() {
   const [saveMessage, setSaveMessage] = useState("");
   const [isCommentFiltersOpen, setIsCommentFiltersOpen] = useState(false);
   const [isTaskFiltersOpen, setIsTaskFiltersOpen] = useState(false);
+  const [visibleCommentCount, setVisibleCommentCount] = useState(
+    COMMENT_RENDER_BATCH_SIZE
+  );
 
   const loadSettings = () => {
     getSettings().then((savedSettings) => {
@@ -647,6 +776,16 @@ export default function App() {
       window.removeEventListener("message", handleMessage);
     };
   }, []);
+
+  useEffect(() => {
+    setVisibleCommentCount(COMMENT_RENDER_BATCH_SIZE);
+  }, [
+    commentFilter,
+    commentSearch,
+    commentPageFilter,
+    commentSort,
+    figmaComments
+  ]);
 
   const updateSetting = (key: keyof FeedbackSettings, value: string) => {
     setSettings((currentSettings) => ({
@@ -725,12 +864,14 @@ export default function App() {
   const updateManualFileKey = (value: string) => {
     setManualFileKey(value);
     setFigmaFetchError("");
+    setFigmaFetchWarning("");
     setFigmaFetchStatus("");
   };
 
   const updateConnectionCode = (value: string) => {
     setConnectionCode(value);
     setFigmaFetchError("");
+    setFigmaFetchWarning("");
     setFigmaFetchStatus("");
   };
 
@@ -825,10 +966,28 @@ export default function App() {
     }
 
     setFigmaFetchError("");
-    setFigmaFetchStatus("Loading Figma comments...");
+    setFigmaFetchWarning("");
+    setFigmaFetchStatus("Connecting to Figma...");
     setIsFetchingFigmaComments(true);
 
+    const cachedComments = readCachedComments(
+      activeFileKey,
+      settings.feedbackStartDate
+    );
+
+    if (cachedComments) {
+      setFigmaComments(cachedComments.comments);
+      setFigmaPageNames(cachedComments.pages);
+      setOlderCommentsExcludedCount(
+        cachedComments.olderCommentsExcludedCount || 0
+      );
+      setFigmaFetchWarning("Showing cached comments while refreshing...");
+    }
+
     try {
+      await waitForLoadingStep();
+      setFigmaFetchStatus("Fetching comments...");
+
       const response = await fetch(
         `${API_BASE_URL}/api/figma/comments?fileKey=${encodeURIComponent(
           activeFileKey
@@ -836,100 +995,109 @@ export default function App() {
       );
 
       if (response.status === 401) {
-        setFigmaComments([]);
-        setFigmaPageNames([]);
-        setOlderCommentsExcludedCount(0);
+        if (!cachedComments) {
+          setFigmaComments([]);
+          setFigmaPageNames([]);
+          setOlderCommentsExcludedCount(0);
+        } else {
+          setFigmaFetchWarning(
+            "Could not refresh comments. Showing cached results."
+          );
+        }
         setFigmaFetchStatus("");
-        setFigmaFetchError(
-          "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
-        );
+        if (!cachedComments) {
+          setFigmaFetchError(
+            "Not connected to Figma. Click Connect to Figma first, then paste the connection code."
+          );
+        }
         return;
       }
 
       if (response.status === 403) {
-        setFigmaComments([]);
-        setFigmaPageNames([]);
-        setOlderCommentsExcludedCount(0);
+        if (!cachedComments) {
+          setFigmaComments([]);
+          setFigmaPageNames([]);
+          setOlderCommentsExcludedCount(0);
+        } else {
+          setFigmaFetchWarning(
+            "Could not refresh comments. Showing cached results."
+          );
+        }
         setFigmaFetchStatus("");
-        setFigmaFetchError(
-          "Figma denied API access to this file. You may be able to view it in Figma, but this OAuth app does not have API access to the file."
-        );
+        if (!cachedComments) {
+          setFigmaFetchError(
+            "Figma denied API access to this file. You may be able to view it in Figma, but this OAuth app does not have API access to the file."
+          );
+        }
         return;
       }
 
       if (!response.ok) {
         const errorData = (await response.json().catch(() => ({}))) as
           FigmaProxyError;
-        setFigmaComments([]);
-        setFigmaPageNames([]);
-        setOlderCommentsExcludedCount(0);
+        if (!cachedComments) {
+          setFigmaComments([]);
+          setFigmaPageNames([]);
+          setOlderCommentsExcludedCount(0);
+        } else {
+          setFigmaFetchWarning(
+            "Could not refresh comments. Showing cached results."
+          );
+        }
         setFigmaFetchStatus("");
-        setFigmaFetchError(
-          errorData.message ||
-            errorData.error ||
-            "Figma could not return comments for that file."
-        );
+        if (!cachedComments) {
+          setFigmaFetchError(
+            errorData.message ||
+              errorData.error ||
+              "Figma could not return comments for that file."
+          );
+        }
         return;
       }
 
+      setFigmaFetchStatus("Filtering by feedback window...");
+      await waitForLoadingStep();
+
       const data = (await response.json()) as FigmaCommentsResponse;
-      const normalizedComments: CommentItem[] = (data.comments || []).map(
-        (comment, index) => {
-          const author = comment.author || comment.user;
-          const figmaCommentId = comment.id || "";
-
-          return {
-            id: `figma-${figmaCommentId || index}`,
-            figmaCommentId,
-            authorName:
-              author?.name || author?.handle || "Unknown Figma user",
-            email: author?.email || "",
-            handle: author?.handle,
-            parentId: comment.parent_id || undefined,
-            message: comment.message || "",
-            createdAt: comment.created_at || new Date().toISOString(),
-            pageName: comment.pageName || "Unknown page",
-            commentUrl: comment.commentUrl,
-            nodeId: comment.nodeId
-          };
-        }
+      const normalizedComments = normalizeFigmaApiComments(data.comments);
+      const {
+        filteredComments: startDateFilteredComments,
+        olderCommentsExcludedCount: excludedOlderRootCommentsCount
+      } = filterCommentsByFeedbackStartDate(
+        normalizedComments,
+        settings.feedbackStartDate
       );
-      const excludedOlderRootComments = normalizedComments.filter((comment) =>
-        isRootCommentBeforeStartDate(comment, settings.feedbackStartDate)
-      );
-      const excludedRootCommentIds = new Set(
-        excludedOlderRootComments.flatMap((comment) =>
-          [comment.figmaCommentId, comment.id].filter(
-            (commentId): commentId is string => Boolean(commentId)
-          )
-        )
-      );
-      const startDateFilteredComments = normalizedComments.filter((comment) => {
-        if (isRootCommentBeforeStartDate(comment, settings.feedbackStartDate)) {
-          return false;
-        }
+      const pageOptions = getPageOptions(data.pages || [], normalizedComments);
 
-        if (
-          comment.parentId &&
-          (excludedRootCommentIds.has(comment.parentId) ||
-            excludedRootCommentIds.has(`figma-${comment.parentId}`))
-        ) {
-          return false;
-        }
+      setFigmaFetchStatus("Organizing threads...");
+      await waitForLoadingStep();
+      setFigmaFetchStatus("Preparing view...");
+      await waitForLoadingStep();
 
-        return true;
-      });
-
-      setFigmaPageNames(getPageOptions(data.pages || [], normalizedComments));
+      setFigmaPageNames(pageOptions);
       setFigmaComments(startDateFilteredComments);
-      setOlderCommentsExcludedCount(excludedOlderRootComments.length);
+      setOlderCommentsExcludedCount(excludedOlderRootCommentsCount);
+      writeCachedComments(
+        activeFileKey,
+        startDateFilteredComments,
+        pageOptions,
+        settings.feedbackStartDate,
+        excludedOlderRootCommentsCount
+      );
+      setFigmaFetchWarning("");
       setFigmaFetchStatus("");
     } catch {
-      setFigmaComments([]);
-      setFigmaPageNames([]);
-      setOlderCommentsExcludedCount(0);
+      if (!cachedComments) {
+        setFigmaComments([]);
+        setFigmaPageNames([]);
+        setOlderCommentsExcludedCount(0);
+        setFigmaFetchError("The OAuth helper could not be reached.");
+      } else {
+        setFigmaFetchWarning(
+          "Could not refresh comments. Showing cached results."
+        );
+      }
       setFigmaFetchStatus("");
-      setFigmaFetchError("The OAuth helper could not be reached.");
     } finally {
       setIsFetchingFigmaComments(false);
     }
@@ -1205,7 +1373,12 @@ export default function App() {
     classifiedComments,
     visibleComments
   );
-  const visibleCommentThreads = allVisibleCommentThreads;
+  const visibleCommentThreads = allVisibleCommentThreads.slice(
+    0,
+    visibleCommentCount
+  );
+  const canShowMoreComments =
+    visibleCommentThreads.length < allVisibleCommentThreads.length;
   const lateClientComments = classifiedComments.filter(
     (comment) => comment.audience === "Client" && comment.timing === "Late"
   );
@@ -1544,6 +1717,10 @@ export default function App() {
                 <p className="helper-text">{figmaFetchStatus}</p>
               )}
 
+              {figmaFetchWarning && (
+                <p className="warning-message">{figmaFetchWarning}</p>
+              )}
+
               {figmaFetchError && (
                 <p className="error-message">{figmaFetchError}</p>
               )}
@@ -1647,13 +1824,14 @@ export default function App() {
                   </select>
                 </label>
 
-                <p className="comment-count">
-                  Showing {visibleComments.length} of {classifiedComments.length}{" "}
-                  comments
-                </p>
               </div>
             )}
           </section>
+
+          <p className="comment-count">
+            Showing {visibleCommentThreads.length} of{" "}
+            {allVisibleCommentThreads.length} comments
+          </p>
 
           <div className="comment-list">
             {visibleCommentThreads.length === 0 ? (
@@ -1818,6 +1996,20 @@ export default function App() {
                   </article>
                 );
               })
+            )}
+
+            {canShowMoreComments && (
+              <button
+                className="secondary-button show-more-button"
+                type="button"
+                onClick={() =>
+                  setVisibleCommentCount(
+                    (currentCount) => currentCount + COMMENT_RENDER_BATCH_SIZE
+                  )
+                }
+              >
+                Show 50 more
+              </button>
             )}
           </div>
         </section>
