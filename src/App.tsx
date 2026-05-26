@@ -20,7 +20,7 @@ const defaultSettings: FeedbackSettings = {
 };
 
 const API_BASE_URL = "https://feedback-window.vercel.app";
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.0.3";
 
 type ActiveTab = "dashboard" | "setup" | "comments" | "tasks";
 type ReviewWindowStatus = "Not configured" | "Open" | "Closed" | "Upcoming";

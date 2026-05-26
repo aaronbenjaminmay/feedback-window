@@ -3,35 +3,38 @@
   --background: #ffffff;
   --surface: #ffffff;
   --surface-muted: #f7f7f7;
-  --surface-active: #f0f7ff;
+  --surface-active: #eaf4ff;
   --text-primary: #111111;
-  --text-secondary: #666666;
-  --text-muted: #8a8a8a;
-  --border: #d7d7d7;
-  --border-subtle: #e5e5e5;
-  --primary: #18a0fb;
-  --primary-hover: #0d8de3;
-  --focus: #18a0fb;
+  --text-secondary: #4f4f4f;
+  --text-muted: #666666;
+  --border: #8c8c8c;
+  --border-subtle: #cfcfcf;
+  --primary: #006fca;
+  --primary-hover: #005ca8;
+  --primary-text: #ffffff;
+  --focus: #006fca;
+  --focus-ring: rgba(0, 111, 202, 0.3);
+  --focus-ring-strong: rgba(0, 111, 202, 0.44);
   --button-primary: #111111;
   --button-primary-hover: #000000;
-  --button-disabled-bg: #eeeeee;
+  --button-disabled-bg: #e0e0e0;
   --danger: #991b1b;
-  --danger-bg: #fff7f7;
+  --danger-bg: #fff3f3;
   --danger-bg-strong: #fee2e2;
-  --danger-border: #fecaca;
-  --success: #166534;
-  --success-bg: #f0fdf4;
-  --success-bg-strong: #dcfce7;
-  --success-border: #bbf7d0;
-  --warning: #7f1d1d;
+  --danger-border: #b91c1c;
+  --success: #0f5a2a;
+  --success-bg: #edf9f0;
+  --success-bg-strong: #d9f2df;
+  --success-border: #2f7d45;
+  --warning: #7a271a;
   --badge-internal-text: #075985;
-  --badge-internal-bg: #e0f2fe;
+  --badge-internal-bg: #dff3ff;
   --badge-client-text: #5b21b6;
-  --badge-client-bg: #ede9fe;
+  --badge-client-bg: #eee7ff;
   --badge-late-text: #991b1b;
   --badge-late-bg: #fee2e2;
-  --badge-on-time-text: #166534;
-  --badge-on-time-bg: #dcfce7;
+  --badge-on-time-text: #0f5a2a;
+  --badge-on-time-bg: #dff5e5;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -40,37 +43,39 @@
     --background: #1e1e1e;
     --surface: #2c2c2c;
     --surface-muted: #383838;
-    --surface-active: #303842;
+    --surface-active: #26384a;
     --text-primary: #f5f5f5;
-    --text-secondary: #b3b3b3;
-    --text-muted: #8f8f8f;
-    --border: #444444;
-    --border-subtle: #333333;
-    --primary: #8abff5;
-    --primary-hover: #abd2fb;
-    --focus: #8abff5;
+    --text-secondary: #c4c4c4;
+    --text-muted: #a8a8a8;
+    --border: #777777;
+    --border-subtle: #4f4f4f;
+    --primary: #9dccff;
+    --primary-hover: #c4e1ff;
+    --primary-text: #111111;
+    --focus: #9dccff;
+    --focus-ring: rgba(157, 204, 255, 0.34);
+    --focus-ring-strong: rgba(157, 204, 255, 0.52);
     --button-primary: #f5f5f5;
     --button-primary-hover: #ffffff;
-    --button-disabled-bg: #3f3f3f;
-    --danger: #f0a0a0;
+    --button-disabled-bg: #4a4a4a;
+    --danger: #ffb4b4;
     --danger-bg: #3a2c2f;
-    --danger-bg-strong: #463033;
-    --danger-border: #654145;
-    --success: #a7d8b1;
+    --danger-bg-strong: #4a3033;
+    --danger-border: #b86b70;
+    --success: #b8e5bf;
     --success-bg: #29362d;
-    --success-bg-strong: #304335;
-    --success-border: #4d654f;
-    --warning: #f0b4a8;
-    --badge-internal-text: #a9d8f5;
-    --badge-internal-bg: #243743;
-    --badge-client-text: #d8c9ff;
-    --badge-client-bg: #353144;
-    --badge-late-text: #f0b0b0;
-    --badge-late-bg: #433033;
-    --badge-on-time-text: #b7ddb9;
-    --badge-on-time-bg: #2f3d33;
+    --success-bg-strong: #304b36;
+    --success-border: #79a881;
+    --warning: #ffc0b3;
+    --badge-internal-text: #c1e7ff;
+    --badge-internal-bg: #233d4e;
+    --badge-client-text: #e3d7ff;
+    --badge-client-bg: #3c3450;
+    --badge-late-text: #ffc7c7;
+    --badge-late-bg: #4b3033;
+    --badge-on-time-text: #c8efcf;
+    --badge-on-time-bg: #304735;
   }
-
 }
 
 body {
@@ -162,7 +167,7 @@ textarea {
 }
 
 .nav-item.active {
-  border-color: var(--border-subtle);
+  border-color: var(--focus);
   color: var(--text-primary);
   background: var(--surface-active);
   box-shadow: none;
@@ -256,7 +261,28 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--focus);
-  outline: 2px solid rgba(24, 160, 251, 0.18);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.nav-item:focus-visible,
+.accordion-trigger:focus-visible,
+.source-link:focus-visible,
+.thread-accordion summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+.nav-item:focus-visible,
+.accordion-trigger:focus-visible,
+.source-link:focus-visible,
+.thread-accordion summary:focus-visible {
+  box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 button {
@@ -288,7 +314,7 @@ button:disabled:hover {
 .secondary-button {
   width: 100%;
   margin-top: 12px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border);
   color: var(--text-primary);
   background: var(--surface);
 }
@@ -404,6 +430,7 @@ button:disabled:hover {
 
 .primary-action {
   background: var(--primary);
+  color: var(--primary-text);
 }
 
 .primary-action:hover {
