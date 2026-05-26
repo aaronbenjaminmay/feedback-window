@@ -20,7 +20,7 @@ const defaultSettings: FeedbackSettings = {
 };
 
 const API_BASE_URL = "https://feedback-window.vercel.app";
-const APP_VERSION = "1.0.4";
+const APP_VERSION = "1.0.5";
 const COMMENT_RENDER_BATCH_SIZE = 50;
 const COMMENTS_CACHE_PREFIX = "feedback-window-comments";
 
@@ -679,9 +679,9 @@ const writeCachedComments = (
   }
 };
 
-const waitForLoadingStep = () => {
+const delay = (duration = 100) => {
   return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, 150);
+    window.setTimeout(resolve, duration);
   });
 };
 
@@ -967,7 +967,7 @@ export default function App() {
 
     setFigmaFetchError("");
     setFigmaFetchWarning("");
-    setFigmaFetchStatus("Connecting to Figma...");
+    setFigmaFetchStatus("Fetching comments from Figma...");
     setIsFetchingFigmaComments(true);
 
     const cachedComments = readCachedComments(
@@ -981,13 +981,12 @@ export default function App() {
       setOlderCommentsExcludedCount(
         cachedComments.olderCommentsExcludedCount || 0
       );
-      setFigmaFetchWarning("Showing cached comments while refreshing...");
+      setFigmaFetchWarning(
+        "Showing cached comments while refreshing from Figma..."
+      );
     }
 
     try {
-      await waitForLoadingStep();
-      setFigmaFetchStatus("Fetching comments...");
-
       const response = await fetch(
         `${API_BASE_URL}/api/figma/comments?fileKey=${encodeURIComponent(
           activeFileKey
@@ -1055,11 +1054,15 @@ export default function App() {
         return;
       }
 
-      setFigmaFetchStatus("Filtering by feedback window...");
-      await waitForLoadingStep();
-
       const data = (await response.json()) as FigmaCommentsResponse;
       const normalizedComments = normalizeFigmaApiComments(data.comments);
+      const totalLoadedComments = normalizedComments.length;
+
+      setFigmaFetchStatus(`Loaded ${totalLoadedComments} comments.`);
+      await delay();
+      setFigmaFetchStatus("Filtering by feedback window...");
+      await delay();
+
       const {
         filteredComments: startDateFilteredComments,
         olderCommentsExcludedCount: excludedOlderRootCommentsCount
@@ -1069,10 +1072,12 @@ export default function App() {
       );
       const pageOptions = getPageOptions(data.pages || [], normalizedComments);
 
-      setFigmaFetchStatus("Organizing threads...");
-      await waitForLoadingStep();
-      setFigmaFetchStatus("Preparing view...");
-      await waitForLoadingStep();
+      setFigmaFetchStatus(
+        `Organizing ${startDateFilteredComments.length} comments into threads...`
+      );
+      await delay();
+      setFigmaFetchStatus("Preparing comment view...");
+      await delay();
 
       setFigmaPageNames(pageOptions);
       setFigmaComments(startDateFilteredComments);
@@ -1714,7 +1719,17 @@ export default function App() {
               )}
 
               {figmaFetchStatus && (
-                <p className="helper-text">{figmaFetchStatus}</p>
+                <div className="loading-status" role="status" aria-live="polite">
+                  {isFetchingFigmaComments && (
+                    <span className="loading-spinner" aria-hidden="true" />
+                  )}
+                  <div>
+                    <p>{figmaFetchStatus}</p>
+                    {isFetchingFigmaComments && (
+                      <p>Large files can take up to 90 seconds.</p>
+                    )}
+                  </div>
+                </div>
               )}
 
               {figmaFetchWarning && (
