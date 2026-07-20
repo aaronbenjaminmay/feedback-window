@@ -66,15 +66,10 @@ const readUpstreamResponseBody = async (upstreamResponse: Response) => {
   }
 };
 
-const setCorsHeaders = (request: VercelRequest, response: VercelResponse) => {
-  response.setHeader(
-    "Access-Control-Allow-Origin",
-    request.headers.origin || "https://www.figma.com"
-  );
-  response.setHeader("Access-Control-Allow-Credentials", "true");
+const setCorsHeaders = (response: VercelResponse) => {
+  response.setHeader("Access-Control-Allow-Origin", "*");
   response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  response.setHeader("Vary", "Origin");
 };
 
 const normalizeNodeIdForLookup = (nodeId: string) => {
@@ -330,7 +325,7 @@ export default async function handler(
   request: VercelRequest,
   response: VercelResponse
 ) {
-  setCorsHeaders(request, response);
+  setCorsHeaders(response);
 
   if (request.method === "OPTIONS") {
     response.status(204).end();
