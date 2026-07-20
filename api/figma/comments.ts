@@ -375,8 +375,10 @@ export default async function handler(
     let pageNames: string[] = [];
 
     try {
+      // depth caps Figma's traversal so huge files can't blow the function's
+      // memory; comments on nodes below this depth just fall back to "Unknown page".
       const fileResponse = await fetch(
-        `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}`,
+        `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=6`,
         {
           headers: {
             Authorization: `Bearer ${token}`

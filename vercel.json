@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/figma/comments.ts": {
+      "memory": 3009,
+      "maxDuration": 60
+    }
+  }
+}
