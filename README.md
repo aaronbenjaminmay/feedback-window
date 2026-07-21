@@ -109,6 +109,17 @@ This makes it difficult to:
 
 ---
 
+## 🌐 Multi-Environment Support
+
+Feedback Window supports multiple Figma organizations from a single codebase. The same `src/` and `api/` code powers two independent, isolated deployments:
+
+- **Verizon** — Verizon's Figma organization, its own Vercel deployment, its own Figma OAuth app
+- **Agency (AKQA)** — AKQA's Figma organization, its own Vercel deployment, its own Figma OAuth app
+
+Each environment gets its own generated plugin package (see below); nothing is shared at runtime, and switching environments is a matter of importing a different manifest, not reconfiguring anything.
+
+---
+
 ## 🚀 Getting Started (Local Development)
 
 1. Clone the repository:
@@ -133,6 +144,11 @@ Each command builds the frontend against that environment's backend (`.env.veriz
 Go to Plugins → Development → Import plugin from manifest
 Select `builds/verizon/manifest.json` or `builds/agency/manifest.json` (whichever org you're working in)
 Run the plugin from Figma
+
+### 🧯 OAuth Troubleshooting
+
+- Complete the OAuth flow in the **same browser session** that started it. The "Connect to Figma" button opens a new tab; finish signing in and approving access there before returning to the plugin.
+- If you use multiple Figma accounts or browser profiles, make sure the tab that completes OAuth is signed into the account for the environment you're connecting (Verizon vs. Agency) — signing in with the wrong account, or switching profiles mid-flow, is the most common cause of an OAuth state mismatch or connection failure.
 
 ---
 
@@ -173,6 +189,9 @@ These are used for:
 ---
 
 ## 📦 Version
+
+**v1.1.0**
+Adds Verizon + Agency (AKQA) multi-environment support: separate builds, separate Vercel backends, separate Figma OAuth apps, one shared codebase.
 
 v1.0.0
 Initial release supporting a full feedback workflow from intake to task export.
