@@ -7,6 +7,9 @@
   "enablePrivatePluginApi": true,
   "editorType": ["figma"],
   "networkAccess": {
-    "allowedDomains": ["https://feedback-window.vercel.app"]
+    "allowedDomains": [
+      "https://feedback-window.vercel.app",
+      "https://feedback-window-agency.vercel.app"
+    ]
   }
 }

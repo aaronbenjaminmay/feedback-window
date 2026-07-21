@@ -19,7 +19,7 @@ const defaultSettings: FeedbackSettings = {
   lateFeedbackMessage: defaultLateFeedbackMessage
 };
 
-const API_BASE_URL = "https://feedback-window.vercel.app";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const APP_VERSION = "1.0.5";
 const COMMENT_RENDER_BATCH_SIZE = 50;
 const COMMENTS_CACHE_PREFIX = "feedback-window-comments";

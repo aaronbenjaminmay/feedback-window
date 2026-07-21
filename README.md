@@ -120,18 +120,30 @@ cd feedback-window
 2. Install dependencies:
 ```bash
 npm install
-npm run build
 ```
 
-3. Build the plugin:
+3. Build the plugin for the environment you need:
 ```bash
-npm run build
+npm run build:verizon   # -> builds/verizon/ (Verizon Figma org)
+npm run build:agency    # -> builds/agency/  (agency Figma org)
 ```
+Each command builds the frontend against that environment's backend (`.env.verizon` / `.env.agency`) and packages a self-contained, importable folder — `manifest.json`, `main.js`, `index.html`, and the icon — via `scripts/package-plugin.js`. The two are independent; running one never touches the other's output. `npm run build` (no target) still exists and writes to the legacy `dist/` + root `manifest.json` pairing.
 
 4. In Figma:
 Go to Plugins → Development → Import plugin from manifest
-Select manifest.json
+Select `builds/verizon/manifest.json` or `builds/agency/manifest.json` (whichever org you're working in)
 Run the plugin from Figma
+
+---
+
+## 📦 Build Artifacts & Version Control
+
+`builds/verizon/`, `builds/agency/`, and `dist/` are **committed**, not gitignored. This is a deliberate choice, not an oversight:
+
+- Figma imports a plugin by reading `manifest.json` plus the `main`/`ui` files it points to **directly off disk** — there's no server involved for the plugin UI itself. Anyone testing the plugin (including non-developers on the Verizon or agency side) needs those files to exist the moment they clone/pull the repo; they are not expected to have Node/npm set up or to run a build themselves.
+- This has already been relied on in practice: production fixes were shipped by pushing the built output straight to `main` so testers could pull and re-import without a local build step.
+- The build is now fully reproducible (`npm run build:verizon` / `build:agency`), so the historical risk of committed output silently drifting from source is easy to catch — run the command again and `git diff` should show nothing if a commit is in sync.
+- Never hand-edit files inside `builds/*` or `dist/` — always regenerate via the npm scripts above, so the two environments can't accidentally cross-contaminate (e.g. an agency URL leaking into the Verizon manifest).
 
 ---
 

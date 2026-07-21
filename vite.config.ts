@@ -47,10 +47,21 @@ const inlineFigmaUiAssets = () => {
   };
 };
 
-export default defineConfig({
+// Build targets (npm run build:verizon / build:agency) each load their own
+// .env.<mode> file and land in their own output directory so both plugin
+// builds can exist side by side from the same source. Plain `npm run build`
+// (no --mode) keeps writing to dist/, unchanged. These live as siblings of
+// dist/, not nested inside it — Vite empties its outDir on every build, so a
+// nested dist/verizon would get wiped out by a later plain `npm run build`.
+const targetOutDirs: Record<string, string> = {
+  verizon: "builds/verizon",
+  agency: "builds/agency"
+};
+
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   build: {
-    outDir: "dist",
+    outDir: targetOutDirs[mode] ?? "dist",
     rollupOptions: {
       input: {
         ui: resolve(__dirname, "index.html"),
@@ -64,4 +75,4 @@ export default defineConfig({
       plugins: [inlineFigmaUiAssets()]
     }
   }
-});
+}));
