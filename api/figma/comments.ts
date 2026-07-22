@@ -52,15 +52,32 @@ const getQueryValue = (value: string | string[] | undefined) => {
   return Array.isArray(value) ? value[0] || "" : value || "";
 };
 
-const readUpstreamResponseBody = async (upstreamResponse: Response) => {
+const readUpstreamResponseBody = async (
+  upstreamResponse: Response,
+  label: string,
+  started: number
+) => {
+  const textStart = Date.now();
   const responseText = await upstreamResponse.text();
+  console.log(
+    `[comments] ${label} body read (text)`,
+    Date.now() - started,
+    { stageMs: Date.now() - textStart, bytes: responseText.length }
+  );
 
   if (!responseText) {
     return null;
   }
 
   try {
-    return JSON.parse(responseText) as unknown;
+    const parseStart = Date.now();
+    const parsed = JSON.parse(responseText) as unknown;
+    console.log(
+      `[comments] ${label} body parsed (JSON.parse)`,
+      Date.now() - started,
+      { stageMs: Date.now() - parseStart }
+    );
+    return parsed;
   } catch {
     return responseText;
   }
@@ -88,28 +105,45 @@ const buildNodePageMap = (fileBody: FigmaFileResponse | null) => {
   const nodePageMap = new Map<string, string>();
   const documentNode = fileBody?.document;
 
-  const mapCanvasSubtree = (node: FigmaNode, pageName: string) => {
+  let nodesVisited = 0;
+  let maxDepthSeen = 0;
+
+  const mapCanvasSubtree = (node: FigmaNode, pageName: string, depth = 0) => {
+    nodesVisited += 1;
+    if (depth > maxDepthSeen) {
+      maxDepthSeen = depth;
+    }
+
     if (node.id) {
       nodePageMap.set(normalizeNodeIdForLookup(node.id), pageName);
     }
 
-    node.children?.forEach((child) => mapCanvasSubtree(child, pageName));
+    node.children?.forEach((child) => mapCanvasSubtree(child, pageName, depth + 1));
   };
 
   if (!documentNode) {
+    console.log("[comments] buildNodePageMap: no document node", { nodesVisited });
     return nodePageMap;
   }
+
+  const traversalStart = Date.now();
 
   if (documentNode.type === "CANVAS") {
     mapCanvasSubtree(documentNode, documentNode.name || "Unknown page");
-    return nodePageMap;
+  } else {
+    documentNode.children
+      ?.filter((node) => node.type === "CANVAS")
+      .forEach((canvasNode) => {
+        mapCanvasSubtree(canvasNode, canvasNode.name || "Unknown page");
+      });
   }
 
-  documentNode.children
-    ?.filter((node) => node.type === "CANVAS")
-    .forEach((canvasNode) => {
-      mapCanvasSubtree(canvasNode, canvasNode.name || "Unknown page");
-    });
+  console.log("[comments] buildNodePageMap: tree traversal done", {
+    stageMs: Date.now() - traversalStart,
+    nodesVisited,
+    maxDepthSeen,
+    mapSize: nodePageMap.size
+  });
 
   return nodePageMap;
 };
@@ -133,7 +167,11 @@ const getFilePageNames = (fileBody: FigmaFileResponse | null) => {
   );
 };
 
+let extractNodeIdFromValueCallCount = 0;
+
 const extractNodeIdFromValue = (value: unknown): string => {
+  extractNodeIdFromValueCallCount += 1;
+
   if (!value) {
     return "";
   }
@@ -294,30 +332,52 @@ const enrichCommentsWithLocation = (
     return commentsBody;
   }
 
+  const filterStart = Date.now();
+  const activeComments = getActiveComments(body.comments);
+  console.log("[comments] getActiveComments (resolved filter) done", {
+    stageMs: Date.now() - filterStart,
+    totalComments: body.comments.length,
+    activeComments: activeComments.length
+  });
+
+  extractNodeIdFromValueCallCount = 0;
+  const resolutionStart = Date.now();
+
+  const resolvedComments = activeComments.map((comment) => {
+    const extractedNodeId = extractNodeId(comment);
+    const lookupNodeId = extractedNodeId
+      ? normalizeNodeIdForLookup(extractedNodeId)
+      : "";
+    const pageName = lookupNodeId
+      ? nodePageMap.get(lookupNodeId) || "Unknown page"
+      : "Unknown page";
+    const commentUrl = buildCommentUrl(
+      fileKey,
+      lookupNodeId,
+      comment.id || ""
+    );
+
+    return {
+      ...comment,
+      pageName,
+      commentUrl: commentUrl || undefined,
+      nodeId: lookupNodeId || undefined
+    };
+  });
+
+  console.log("[comments] per-comment location resolution done", {
+    stageMs: Date.now() - resolutionStart,
+    commentsResolved: resolvedComments.length,
+    extractNodeIdFromValueCalls: extractNodeIdFromValueCallCount,
+    avgExtractCallsPerComment: resolvedComments.length
+      ? extractNodeIdFromValueCallCount / resolvedComments.length
+      : 0
+  });
+
   return {
     ...body,
     pages: pageNames,
-    comments: getActiveComments(body.comments).map((comment) => {
-      const extractedNodeId = extractNodeId(comment);
-      const lookupNodeId = extractedNodeId
-        ? normalizeNodeIdForLookup(extractedNodeId)
-        : "";
-      const pageName = lookupNodeId
-        ? nodePageMap.get(lookupNodeId) || "Unknown page"
-        : "Unknown page";
-      const commentUrl = buildCommentUrl(
-        fileKey,
-        lookupNodeId,
-        comment.id || ""
-      );
-
-      return {
-        ...comment,
-        pageName,
-        commentUrl: commentUrl || undefined,
-        nodeId: lookupNodeId || undefined
-      };
-    })
+    comments: resolvedComments
   };
 };
 
@@ -325,6 +385,7 @@ export default async function handler(
   request: VercelRequest,
   response: VercelResponse
 ) {
+  const started = Date.now();
   setCorsHeaders(response);
 
   if (request.method === "OPTIONS") {
@@ -339,6 +400,8 @@ export default async function handler(
 
   const connectionId = getQueryValue(request.query.connectionId);
   const token = await getSessionToken(connectionId);
+  console.log("[comments] session lookup", Date.now() - started);
+
   const fileKey = getQueryValue(request.query.fileKey).trim();
 
   if (!token) {
@@ -351,7 +414,10 @@ export default async function handler(
     return;
   }
 
+  console.log("[comments] request start", Date.now() - started, { fileKey });
+
   try {
+    const commentsFetchStart = Date.now();
     const commentsResponse = await fetch(
       `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}/comments`,
       {
@@ -360,7 +426,21 @@ export default async function handler(
         }
       }
     );
-    const commentsBody = await readUpstreamResponseBody(commentsResponse);
+    console.log("[comments] comments API network round-trip", Date.now() - started, {
+      stageMs: Date.now() - commentsFetchStart,
+      status: commentsResponse.status
+    });
+
+    const commentsBody = await readUpstreamResponseBody(
+      commentsResponse,
+      "comments",
+      started
+    );
+    console.log("[comments] comments fetched", Date.now() - started, {
+      count: Array.isArray((commentsBody as FigmaCommentsResponse | null)?.comments)
+        ? (commentsBody as FigmaCommentsResponse).comments!.length
+        : null
+    });
 
     if (!commentsResponse.ok) {
       response.status(commentsResponse.status).json({
@@ -375,34 +455,111 @@ export default async function handler(
     let pageNames: string[] = [];
 
     try {
-      // depth caps Figma's traversal so huge files can't blow the function's
-      // memory; comments on nodes below this depth just fall back to "Unknown page".
+      const commentsList = Array.isArray(
+        (commentsBody as FigmaCommentsResponse | null)?.comments
+      )
+        ? (commentsBody as FigmaCommentsResponse).comments!
+        : [];
+
+      // Only active (unresolved) comments end up in the response, so only their
+      // node ids need to be resolvable — scoping the file request to exactly
+      // those ids keeps the payload proportional to comment count, not file size.
+      const activeCommentsForIdExtraction = getActiveComments(commentsList);
+      const uniqueNodeIds = Array.from(
+        new Set(
+          activeCommentsForIdExtraction
+            .map((comment) => extractNodeId(comment))
+            .filter((nodeId) => Boolean(nodeId))
+        )
+      );
+
+      const idsQueryParam = uniqueNodeIds
+        .map((nodeId) => encodeURIComponent(nodeId))
+        .join(",");
+
+      console.log("[comments] scoped file request", {
+        totalComments: commentsList.length,
+        uniqueNodeIds: uniqueNodeIds.length,
+        idsQueryLength: idsQueryParam.length
+      });
+
+      // Vector/Region client_meta carries no node_id at all (free-floating canvas
+      // pins) — if none of the active comments resolved to a node id, there's
+      // nothing to scope the request to. Fall back to a cheap depth=1 (pages-only)
+      // fetch so the page filter list still reflects the whole file.
+      const fileFetchStart = Date.now();
       const fileResponse = await fetch(
-        `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=6`,
+        uniqueNodeIds.length > 0
+          ? `https://api.figma.com/v1/files/${encodeURIComponent(
+              fileKey
+            )}?ids=${idsQueryParam}`
+          : `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=1`,
         {
           headers: {
             Authorization: `Bearer ${token}`
           }
         }
       );
+      console.log("[comments] file API network round-trip", Date.now() - started, {
+        stageMs: Date.now() - fileFetchStart,
+        status: fileResponse.status,
+        scoped: uniqueNodeIds.length > 0
+      });
+
       const fileBody = (await readUpstreamResponseBody(
-        fileResponse
+        fileResponse,
+        "file",
+        started
       )) as FigmaFileResponse | null;
+      console.log("[comments] file fetched", Date.now() - started);
 
       if (fileResponse.ok) {
+        const nodeIndexStart = Date.now();
         nodePageMap = buildNodePageMap(fileBody);
+        console.log("[comments] node index built", Date.now() - started, {
+          stageMs: Date.now() - nodeIndexStart,
+          mapSize: nodePageMap.size
+        });
+
+        const pageNamesStart = Date.now();
         pageNames = getFilePageNames(fileBody);
+        console.log("[comments] page names extracted", Date.now() - started, {
+          stageMs: Date.now() - pageNamesStart,
+          pageCount: pageNames.length
+        });
       }
-    } catch {
+    } catch (fileStageError) {
+      console.log("[comments] file fetch/index failed", Date.now() - started, fileStageError);
       nodePageMap = new Map<string, string>();
     }
 
-    response
-      .status(commentsResponse.status)
-      .json(
-        enrichCommentsWithLocation(commentsBody, nodePageMap, fileKey, pageNames)
-      );
-  } catch {
+    const enrichStart = Date.now();
+    const enriched = enrichCommentsWithLocation(
+      commentsBody,
+      nodePageMap,
+      fileKey,
+      pageNames
+    );
+    console.log("[comments] comment resolution complete", Date.now() - started, {
+      stageMs: Date.now() - enrichStart
+    });
+
+    const serializeStart = Date.now();
+    let serializedLength = 0;
+    try {
+      serializedLength = JSON.stringify(enriched).length;
+    } catch {
+      // ignore — only used for timing diagnostics
+    }
+    console.log("[comments] response serialized", Date.now() - started, {
+      stageMs: Date.now() - serializeStart,
+      bytes: serializedLength
+    });
+
+    response.status(commentsResponse.status).json(enriched);
+    console.log("[comments] response sent", Date.now() - started);
+  } catch (handlerError) {
+    console.log("[comments] handler error", Date.now() - started, handlerError);
     response.status(502).json({
       error: "Could not fetch comments from Figma."
     });
