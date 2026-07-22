@@ -417,6 +417,7 @@ export default async function handler(
   console.log("[comments] request start", Date.now() - started, { fileKey });
 
   try {
+    console.log("[comments] comments fetch starting", Date.now() - started);
     const commentsFetchStart = Date.now();
     const commentsResponse = await fetch(
       `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}/comments`,
@@ -428,7 +429,8 @@ export default async function handler(
     );
     console.log("[comments] comments API network round-trip", Date.now() - started, {
       stageMs: Date.now() - commentsFetchStart,
-      status: commentsResponse.status
+      status: commentsResponse.status,
+      contentLength: commentsResponse.headers.get("content-length")
     });
 
     const commentsBody = await readUpstreamResponseBody(
@@ -439,7 +441,14 @@ export default async function handler(
     console.log("[comments] comments fetched", Date.now() - started, {
       count: Array.isArray((commentsBody as FigmaCommentsResponse | null)?.comments)
         ? (commentsBody as FigmaCommentsResponse).comments!.length
-        : null
+        : null,
+      // the Get comments endpoint has no documented cursor/pagination param;
+      // logging every top-level key lets us confirm Figma isn't silently
+      // truncating/paginating a response this size.
+      topLevelKeys:
+        commentsBody && typeof commentsBody === "object"
+          ? Object.keys(commentsBody as object)
+          : typeof commentsBody
     });
 
     if (!commentsResponse.ok) {
@@ -455,6 +464,8 @@ export default async function handler(
     let pageNames: string[] = [];
 
     try {
+      const postCommentsProcessingStart = Date.now();
+
       const commentsList = Array.isArray(
         (commentsBody as FigmaCommentsResponse | null)?.comments
       )
@@ -464,7 +475,16 @@ export default async function handler(
       // Only active (unresolved) comments end up in the response, so only their
       // node ids need to be resolvable — scoping the file request to exactly
       // those ids keeps the payload proportional to comment count, not file size.
+      const activeFilterStart = Date.now();
       const activeCommentsForIdExtraction = getActiveComments(commentsList);
+      console.log("[comments] pre-file-fetch: active comment filter", Date.now() - started, {
+        stageMs: Date.now() - activeFilterStart,
+        totalComments: commentsList.length,
+        activeComments: activeCommentsForIdExtraction.length
+      });
+
+      extractNodeIdFromValueCallCount = 0;
+      const idExtractionStart = Date.now();
       const uniqueNodeIds = Array.from(
         new Set(
           activeCommentsForIdExtraction
@@ -472,12 +492,21 @@ export default async function handler(
             .filter((nodeId) => Boolean(nodeId))
         )
       );
+      console.log("[comments] pre-file-fetch: node id extraction", Date.now() - started, {
+        stageMs: Date.now() - idExtractionStart,
+        uniqueNodeIds: uniqueNodeIds.length,
+        extractNodeIdFromValueCalls: extractNodeIdFromValueCallCount,
+        avgExtractCallsPerComment: activeCommentsForIdExtraction.length
+          ? extractNodeIdFromValueCallCount / activeCommentsForIdExtraction.length
+          : 0
+      });
 
       const idsQueryParam = uniqueNodeIds
         .map((nodeId) => encodeURIComponent(nodeId))
         .join(",");
 
-      console.log("[comments] scoped file request", {
+      console.log("[comments] scoped file request", Date.now() - started, {
+        stageMs: Date.now() - postCommentsProcessingStart,
         totalComments: commentsList.length,
         uniqueNodeIds: uniqueNodeIds.length,
         idsQueryLength: idsQueryParam.length
