@@ -1,4 +1,8 @@
 import { getSessionToken } from "../lib/connectionStore.js";
+import {
+  getCachedFileStructure,
+  setCachedFileStructure
+} from "../lib/fileStructureCache.js";
 
 type VercelRequest = {
   method?: string;
@@ -484,10 +488,14 @@ export default async function handler(
   // — same graceful fallback already used elsewhere in this file.
   const FILE_STRUCTURE_DEPTH = 2;
 
+  type FileStructureResult = {
+    nodePageMap: Map<string, string>;
+    pageNames: string[];
+  };
+
   try {
     console.log("[comments] fetches starting", Date.now() - started);
     const commentsFetchStart = Date.now();
-    const fileFetchStart = Date.now();
 
     const commentsFetchPromise = fetch(
       `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}/comments`,
@@ -518,37 +526,84 @@ export default async function handler(
       return { response: upstreamResponse, body };
     });
 
-    const fileFetchPromise = fetch(
-      `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=${FILE_STRUCTURE_DEPTH}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    )
-      .then(async (upstreamResponse) => {
-        console.log("[comments] file API network round-trip", Date.now() - started, {
-          stageMs: Date.now() - fileFetchStart,
-          status: upstreamResponse.status
-        });
-
-        const body = (await readUpstreamResponseBody(
-          upstreamResponse,
-          "file",
-          started
-        )) as FigmaFileResponse | null;
-        console.log("[comments] file fetched", Date.now() - started);
-
-        return { response: upstreamResponse, body };
-      })
-      .catch((fileFetchError) => {
-        console.log("[comments] file fetch failed", Date.now() - started, fileFetchError);
+    // Page structure changes far less often than comments, and the same file
+    // gets reopened repeatedly during a review cycle — check the cache before
+    // paying Figma's file-endpoint latency again (can be many seconds on
+    // large/complex files even for a small, depth-limited response).
+    const cacheLookupStart = Date.now();
+    const cachedFileStructure = await getCachedFileStructure(fileKey).catch(
+      (cacheError) => {
+        console.log("[comments] file structure cache lookup failed", Date.now() - started, cacheError);
         return null;
-      });
+      }
+    );
+    console.log("[comments] file structure cache lookup", Date.now() - started, {
+      stageMs: Date.now() - cacheLookupStart,
+      hit: Boolean(cachedFileStructure)
+    });
 
-    const [commentsResult, fileResult] = await Promise.all([
+    let fileStructurePromise: Promise<FileStructureResult | null>;
+
+    if (cachedFileStructure) {
+      fileStructurePromise = Promise.resolve(cachedFileStructure);
+    } else {
+      const fileFetchStart = Date.now();
+      fileStructurePromise = fetch(
+        `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=${FILE_STRUCTURE_DEPTH}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      )
+        .then(async (upstreamResponse) => {
+          console.log("[comments] file API network round-trip", Date.now() - started, {
+            stageMs: Date.now() - fileFetchStart,
+            status: upstreamResponse.status
+          });
+
+          const body = (await readUpstreamResponseBody(
+            upstreamResponse,
+            "file",
+            started
+          )) as FigmaFileResponse | null;
+          console.log("[comments] file fetched", Date.now() - started);
+
+          if (!upstreamResponse.ok) {
+            return null;
+          }
+
+          const nodeIndexStart = Date.now();
+          const nodePageMap = buildNodePageMap(body);
+          console.log("[comments] node index built", Date.now() - started, {
+            stageMs: Date.now() - nodeIndexStart,
+            mapSize: nodePageMap.size
+          });
+
+          const pageNamesStart = Date.now();
+          const pageNames = getFilePageNames(body);
+          console.log("[comments] page names extracted", Date.now() - started, {
+            stageMs: Date.now() - pageNamesStart,
+            pageCount: pageNames.length
+          });
+
+          try {
+            await setCachedFileStructure(fileKey, nodePageMap, pageNames);
+          } catch (cacheWriteError) {
+            console.log("[comments] file structure cache write failed", Date.now() - started, cacheWriteError);
+          }
+
+          return { nodePageMap, pageNames };
+        })
+        .catch((fileFetchError) => {
+          console.log("[comments] file fetch failed", Date.now() - started, fileFetchError);
+          return null;
+        });
+    }
+
+    const [commentsResult, fileStructureResult] = await Promise.all([
       commentsFetchPromise,
-      fileFetchPromise
+      fileStructurePromise
     ]);
 
     const { response: commentsResponse, body: commentsBody } = commentsResult;
@@ -562,30 +617,8 @@ export default async function handler(
       return;
     }
 
-    let nodePageMap = new Map<string, string>();
-    let pageNames: string[] = [];
-
-    if (fileResult && fileResult.response.ok) {
-      try {
-        const nodeIndexStart = Date.now();
-        nodePageMap = buildNodePageMap(fileResult.body);
-        console.log("[comments] node index built", Date.now() - started, {
-          stageMs: Date.now() - nodeIndexStart,
-          mapSize: nodePageMap.size
-        });
-
-        const pageNamesStart = Date.now();
-        pageNames = getFilePageNames(fileResult.body);
-        console.log("[comments] page names extracted", Date.now() - started, {
-          stageMs: Date.now() - pageNamesStart,
-          pageCount: pageNames.length
-        });
-      } catch (fileStageError) {
-        console.log("[comments] file index build failed", Date.now() - started, fileStageError);
-        nodePageMap = new Map<string, string>();
-        pageNames = [];
-      }
-    }
+    const nodePageMap = fileStructureResult?.nodePageMap ?? new Map<string, string>();
+    const pageNames = fileStructureResult?.pageNames ?? [];
 
     const commentsList = Array.isArray(
       (commentsBody as FigmaCommentsResponse | null)?.comments
