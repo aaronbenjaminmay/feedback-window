@@ -471,40 +471,87 @@ export default async function handler(
 
   console.log("[comments] request start", Date.now() - started, { fileKey });
 
+  // Pages/top-level frames only. The comments fetch and this file-structure
+  // fetch are independent, so they run in parallel — this used to be a
+  // fetch scoped to `ids=<commented node ids>`, which had to wait for the
+  // comments response first, but Figma's `ids` param returns each requested
+  // node's FULL DESCENDANT SUBTREE (not just its ancestry). A single comment
+  // on a node inside a large frame/component library was enough to balloon
+  // that response to hundreds of MB and ~50s (confirmed via production
+  // logs: 58 ids -> 222MB / 165k nodes). A fixed shallow depth from the
+  // document root bounds payload size regardless of file content, at the
+  // cost of comments nested deeper than this falling back to "Unknown page"
+  // — same graceful fallback already used elsewhere in this file.
+  const FILE_STRUCTURE_DEPTH = 2;
+
   try {
-    console.log("[comments] comments fetch starting", Date.now() - started);
+    console.log("[comments] fetches starting", Date.now() - started);
     const commentsFetchStart = Date.now();
-    const commentsResponse = await fetch(
+    const fileFetchStart = Date.now();
+
+    const commentsFetchPromise = fetch(
       `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}/comments`,
       {
         headers: {
           Authorization: `Bearer ${token}`
         }
       }
-    );
-    console.log("[comments] comments API network round-trip", Date.now() - started, {
-      stageMs: Date.now() - commentsFetchStart,
-      status: commentsResponse.status,
-      contentLength: commentsResponse.headers.get("content-length")
+    ).then(async (upstreamResponse) => {
+      console.log("[comments] comments API network round-trip", Date.now() - started, {
+        stageMs: Date.now() - commentsFetchStart,
+        status: upstreamResponse.status,
+        contentLength: upstreamResponse.headers.get("content-length")
+      });
+
+      const body = await readUpstreamResponseBody(upstreamResponse, "comments", started);
+      console.log("[comments] comments fetched", Date.now() - started, {
+        count: Array.isArray((body as FigmaCommentsResponse | null)?.comments)
+          ? (body as FigmaCommentsResponse).comments!.length
+          : null,
+        // the Get comments endpoint has no documented cursor/pagination param;
+        // logging every top-level key lets us confirm Figma isn't silently
+        // truncating/paginating a response this size.
+        topLevelKeys:
+          body && typeof body === "object" ? Object.keys(body as object) : typeof body
+      });
+
+      return { response: upstreamResponse, body };
     });
 
-    const commentsBody = await readUpstreamResponseBody(
-      commentsResponse,
-      "comments",
-      started
-    );
-    console.log("[comments] comments fetched", Date.now() - started, {
-      count: Array.isArray((commentsBody as FigmaCommentsResponse | null)?.comments)
-        ? (commentsBody as FigmaCommentsResponse).comments!.length
-        : null,
-      // the Get comments endpoint has no documented cursor/pagination param;
-      // logging every top-level key lets us confirm Figma isn't silently
-      // truncating/paginating a response this size.
-      topLevelKeys:
-        commentsBody && typeof commentsBody === "object"
-          ? Object.keys(commentsBody as object)
-          : typeof commentsBody
-    });
+    const fileFetchPromise = fetch(
+      `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=${FILE_STRUCTURE_DEPTH}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    )
+      .then(async (upstreamResponse) => {
+        console.log("[comments] file API network round-trip", Date.now() - started, {
+          stageMs: Date.now() - fileFetchStart,
+          status: upstreamResponse.status
+        });
+
+        const body = (await readUpstreamResponseBody(
+          upstreamResponse,
+          "file",
+          started
+        )) as FigmaFileResponse | null;
+        console.log("[comments] file fetched", Date.now() - started);
+
+        return { response: upstreamResponse, body };
+      })
+      .catch((fileFetchError) => {
+        console.log("[comments] file fetch failed", Date.now() - started, fileFetchError);
+        return null;
+      });
+
+    const [commentsResult, fileResult] = await Promise.all([
+      commentsFetchPromise,
+      fileFetchPromise
+    ]);
+
+    const { response: commentsResponse, body: commentsBody } = commentsResult;
 
     if (!commentsResponse.ok) {
       response.status(commentsResponse.status).json({
@@ -517,134 +564,71 @@ export default async function handler(
 
     let nodePageMap = new Map<string, string>();
     let pageNames: string[] = [];
-    let nodeIdByComment = new Map<FigmaComment, string>();
 
-    try {
-      const postCommentsProcessingStart = Date.now();
-
-      const commentsList = Array.isArray(
-        (commentsBody as FigmaCommentsResponse | null)?.comments
-      )
-        ? (commentsBody as FigmaCommentsResponse).comments!
-        : [];
-
-      // Only active (unresolved) comments end up in the response, so only their
-      // node ids need to be resolvable — scoping the file request to exactly
-      // those ids keeps the payload proportional to comment count, not file size.
-      const activeFilterStart = Date.now();
-      const activeCommentsForIdExtraction = getActiveComments(commentsList);
-      console.log("[comments] pre-file-fetch: active comment filter", Date.now() - started, {
-        stageMs: Date.now() - activeFilterStart,
-        totalComments: commentsList.length,
-        activeComments: activeCommentsForIdExtraction.length
-      });
-
-      console.log("[comments] heartbeat: entering extraction loop", Date.now() - started);
-
-      extractNodeIdFromValueCallCount = 0;
-      const idExtractionStart = Date.now();
-      let slowestCommentMs = -1;
-      let slowestCommentId: string | undefined;
-
-      const uniqueNodeIds = Array.from(
-        new Set(
-          activeCommentsForIdExtraction
-            .map((comment, index) => {
-              if (index % 50 === 0) {
-                console.log("[comments] heartbeat: extraction progress", Date.now() - started, {
-                  index,
-                  total: activeCommentsForIdExtraction.length
-                });
-              }
-
-              const commentStart = Date.now();
-              const nodeId = extractNodeId(comment);
-              const commentMs = Date.now() - commentStart;
-
-              if (commentMs > slowestCommentMs) {
-                slowestCommentMs = commentMs;
-                slowestCommentId = comment.id;
-              }
-
-              nodeIdByComment.set(comment, nodeId);
-              return nodeId;
-            })
-            .filter((nodeId) => Boolean(nodeId))
-        )
-      );
-
-      console.log("[comments] heartbeat: extraction loop finished", Date.now() - started);
-      console.log("[comments] pre-file-fetch: node id extraction", Date.now() - started, {
-        stageMs: Date.now() - idExtractionStart,
-        uniqueNodeIds: uniqueNodeIds.length,
-        extractNodeIdFromValueCalls: extractNodeIdFromValueCallCount,
-        avgExtractCallsPerComment: activeCommentsForIdExtraction.length
-          ? extractNodeIdFromValueCallCount / activeCommentsForIdExtraction.length
-          : 0,
-        slowestCommentMs,
-        slowestCommentId
-      });
-
-      const idsQueryParam = uniqueNodeIds
-        .map((nodeId) => encodeURIComponent(nodeId))
-        .join(",");
-
-      console.log("[comments] scoped file request", Date.now() - started, {
-        stageMs: Date.now() - postCommentsProcessingStart,
-        totalComments: commentsList.length,
-        uniqueNodeIds: uniqueNodeIds.length,
-        idsQueryLength: idsQueryParam.length
-      });
-
-      // Vector/Region client_meta carries no node_id at all (free-floating canvas
-      // pins) — if none of the active comments resolved to a node id, there's
-      // nothing to scope the request to. Fall back to a cheap depth=1 (pages-only)
-      // fetch so the page filter list still reflects the whole file.
-      const fileFetchStart = Date.now();
-      const fileResponse = await fetch(
-        uniqueNodeIds.length > 0
-          ? `https://api.figma.com/v1/files/${encodeURIComponent(
-              fileKey
-            )}?ids=${idsQueryParam}`
-          : `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=1`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      );
-      console.log("[comments] file API network round-trip", Date.now() - started, {
-        stageMs: Date.now() - fileFetchStart,
-        status: fileResponse.status,
-        scoped: uniqueNodeIds.length > 0
-      });
-
-      const fileBody = (await readUpstreamResponseBody(
-        fileResponse,
-        "file",
-        started
-      )) as FigmaFileResponse | null;
-      console.log("[comments] file fetched", Date.now() - started);
-
-      if (fileResponse.ok) {
+    if (fileResult && fileResult.response.ok) {
+      try {
         const nodeIndexStart = Date.now();
-        nodePageMap = buildNodePageMap(fileBody);
+        nodePageMap = buildNodePageMap(fileResult.body);
         console.log("[comments] node index built", Date.now() - started, {
           stageMs: Date.now() - nodeIndexStart,
           mapSize: nodePageMap.size
         });
 
         const pageNamesStart = Date.now();
-        pageNames = getFilePageNames(fileBody);
+        pageNames = getFilePageNames(fileResult.body);
         console.log("[comments] page names extracted", Date.now() - started, {
           stageMs: Date.now() - pageNamesStart,
           pageCount: pageNames.length
         });
+      } catch (fileStageError) {
+        console.log("[comments] file index build failed", Date.now() - started, fileStageError);
+        nodePageMap = new Map<string, string>();
+        pageNames = [];
       }
-    } catch (fileStageError) {
-      console.log("[comments] file fetch/index failed", Date.now() - started, fileStageError);
-      nodePageMap = new Map<string, string>();
     }
+
+    const commentsList = Array.isArray(
+      (commentsBody as FigmaCommentsResponse | null)?.comments
+    )
+      ? (commentsBody as FigmaCommentsResponse).comments!
+      : [];
+
+    const activeFilterStart = Date.now();
+    const activeComments = getActiveComments(commentsList);
+    console.log("[comments] active comment filter", Date.now() - started, {
+      stageMs: Date.now() - activeFilterStart,
+      totalComments: commentsList.length,
+      activeComments: activeComments.length
+    });
+
+    extractNodeIdFromValueCallCount = 0;
+    const idExtractionStart = Date.now();
+    let slowestCommentMs = -1;
+    let slowestCommentId: string | undefined;
+    const nodeIdByComment = new Map<FigmaComment, string>();
+
+    activeComments.forEach((comment) => {
+      const commentStart = Date.now();
+      const nodeId = extractNodeId(comment);
+      const commentMs = Date.now() - commentStart;
+
+      if (commentMs > slowestCommentMs) {
+        slowestCommentMs = commentMs;
+        slowestCommentId = comment.id;
+      }
+
+      nodeIdByComment.set(comment, nodeId);
+    });
+
+    console.log("[comments] node id extraction", Date.now() - started, {
+      stageMs: Date.now() - idExtractionStart,
+      extractNodeIdFromValueCalls: extractNodeIdFromValueCallCount,
+      avgExtractCallsPerComment: activeComments.length
+        ? extractNodeIdFromValueCallCount / activeComments.length
+        : 0,
+      slowestCommentMs,
+      slowestCommentId
+    });
 
     const enrichStart = Date.now();
     const enriched = enrichCommentsWithLocation(
