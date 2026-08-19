@@ -169,8 +169,38 @@ const getFilePageNames = (fileBody: FigmaFileResponse | null) => {
 
 let extractNodeIdFromValueCallCount = 0;
 
-const extractNodeIdFromValue = (value: unknown): string => {
+// client_meta only ever comes from Figma's own documented comment shapes
+// (point: {x,y}; single-node: {node_id, node_offset}; multi-node/region:
+// {node_id: string[], node_offset}), so a handful of levels of nesting is
+// always enough — these caps are a backstop against unexpected/malformed
+// client_meta shapes, not a limit we expect to hit in normal operation.
+const MAX_NODE_ID_EXTRACTION_DEPTH = 8;
+const MAX_NODE_ID_EXTRACTION_CALLS = 500;
+
+const summarizeValueShape = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return { type: "array", length: value.length };
+  }
+
+  if (value && typeof value === "object") {
+    return { type: "object", keys: Object.keys(value as Record<string, unknown>) };
+  }
+
+  return { type: typeof value };
+};
+
+const extractNodeIdFromValue = (
+  value: unknown,
+  depth: number,
+  budget: { remaining: number }
+): string => {
   extractNodeIdFromValueCallCount += 1;
+
+  if (depth > MAX_NODE_ID_EXTRACTION_DEPTH || budget.remaining <= 0) {
+    return "";
+  }
+
+  budget.remaining -= 1;
 
   if (!value) {
     return "";
@@ -182,10 +212,14 @@ const extractNodeIdFromValue = (value: unknown): string => {
 
   if (Array.isArray(value)) {
     for (const item of value) {
-      const nestedNodeId = extractNodeIdFromValue(item);
+      const nestedNodeId = extractNodeIdFromValue(item, depth + 1, budget);
 
       if (nestedNodeId) {
         return nestedNodeId;
+      }
+
+      if (budget.remaining <= 0) {
+        break;
       }
     }
 
@@ -209,7 +243,7 @@ const extractNodeIdFromValue = (value: unknown): string => {
   }
 
   if (directNodeId && typeof directNodeId === "object") {
-    const nestedNodeId = extractNodeIdFromValue(directNodeId);
+    const nestedNodeId = extractNodeIdFromValue(directNodeId, depth + 1, budget);
 
     if (nestedNodeId) {
       return nestedNodeId;
@@ -226,18 +260,28 @@ const extractNodeIdFromValue = (value: unknown): string => {
   ];
 
   for (const field of priorityFields) {
-    const nestedNodeId = extractNodeIdFromValue(field);
+    const nestedNodeId = extractNodeIdFromValue(field, depth + 1, budget);
 
     if (nestedNodeId) {
       return nestedNodeId;
     }
+
+    if (budget.remaining <= 0) {
+      break;
+    }
   }
 
-  for (const field of Object.values(metadata)) {
-    const nestedNodeId = extractNodeIdFromValue(field);
+  if (budget.remaining > 0) {
+    for (const field of Object.values(metadata)) {
+      const nestedNodeId = extractNodeIdFromValue(field, depth + 1, budget);
 
-    if (nestedNodeId) {
-      return nestedNodeId;
+      if (nestedNodeId) {
+        return nestedNodeId;
+      }
+
+      if (budget.remaining <= 0) {
+        break;
+      }
     }
   }
 
@@ -245,11 +289,21 @@ const extractNodeIdFromValue = (value: unknown): string => {
 };
 
 const extractNodeId = (comment: FigmaComment) => {
-  return (
-    extractNodeIdFromValue(comment.client_meta) ||
-    extractNodeIdFromValue(comment.node_id) ||
-    extractNodeIdFromValue(comment.nodeId)
-  );
+  const budget = { remaining: MAX_NODE_ID_EXTRACTION_CALLS };
+
+  const result =
+    extractNodeIdFromValue(comment.client_meta, 0, budget) ||
+    extractNodeIdFromValue(comment.node_id, 0, budget) ||
+    extractNodeIdFromValue(comment.nodeId, 0, budget);
+
+  if (budget.remaining <= 0) {
+    console.warn("[comments] extractNodeId budget exceeded", {
+      commentId: comment.id,
+      clientMetaShape: summarizeValueShape(comment.client_meta)
+    });
+  }
+
+  return result;
 };
 
 const buildCommentUrl = (fileKey: string, nodeId: string, commentId: string) => {
@@ -320,7 +374,8 @@ const enrichCommentsWithLocation = (
   commentsBody: unknown,
   nodePageMap: Map<string, string>,
   fileKey: string,
-  pageNames: string[]
+  pageNames: string[],
+  nodeIdByComment: Map<FigmaComment, string>
 ) => {
   if (!commentsBody || typeof commentsBody !== "object") {
     return commentsBody;
@@ -344,7 +399,7 @@ const enrichCommentsWithLocation = (
   const resolutionStart = Date.now();
 
   const resolvedComments = activeComments.map((comment) => {
-    const extractedNodeId = extractNodeId(comment);
+    const extractedNodeId = nodeIdByComment.get(comment) ?? extractNodeId(comment);
     const lookupNodeId = extractedNodeId
       ? normalizeNodeIdForLookup(extractedNodeId)
       : "";
@@ -462,6 +517,7 @@ export default async function handler(
 
     let nodePageMap = new Map<string, string>();
     let pageNames: string[] = [];
+    let nodeIdByComment = new Map<FigmaComment, string>();
 
     try {
       const postCommentsProcessingStart = Date.now();
@@ -485,10 +541,25 @@ export default async function handler(
 
       extractNodeIdFromValueCallCount = 0;
       const idExtractionStart = Date.now();
+      let slowestCommentMs = -1;
+      let slowestCommentId: string | undefined;
+
       const uniqueNodeIds = Array.from(
         new Set(
           activeCommentsForIdExtraction
-            .map((comment) => extractNodeId(comment))
+            .map((comment) => {
+              const commentStart = Date.now();
+              const nodeId = extractNodeId(comment);
+              const commentMs = Date.now() - commentStart;
+
+              if (commentMs > slowestCommentMs) {
+                slowestCommentMs = commentMs;
+                slowestCommentId = comment.id;
+              }
+
+              nodeIdByComment.set(comment, nodeId);
+              return nodeId;
+            })
             .filter((nodeId) => Boolean(nodeId))
         )
       );
@@ -498,7 +569,9 @@ export default async function handler(
         extractNodeIdFromValueCalls: extractNodeIdFromValueCallCount,
         avgExtractCallsPerComment: activeCommentsForIdExtraction.length
           ? extractNodeIdFromValueCallCount / activeCommentsForIdExtraction.length
-          : 0
+          : 0,
+        slowestCommentMs,
+        slowestCommentId
       });
 
       const idsQueryParam = uniqueNodeIds
@@ -567,7 +640,8 @@ export default async function handler(
       commentsBody,
       nodePageMap,
       fileKey,
-      pageNames
+      pageNames,
+      nodeIdByComment
     );
     console.log("[comments] comment resolution complete", Date.now() - started, {
       stageMs: Date.now() - enrichStart
