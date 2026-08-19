@@ -539,6 +539,8 @@ export default async function handler(
         activeComments: activeCommentsForIdExtraction.length
       });
 
+      console.log("[comments] heartbeat: entering extraction loop", Date.now() - started);
+
       extractNodeIdFromValueCallCount = 0;
       const idExtractionStart = Date.now();
       let slowestCommentMs = -1;
@@ -547,7 +549,14 @@ export default async function handler(
       const uniqueNodeIds = Array.from(
         new Set(
           activeCommentsForIdExtraction
-            .map((comment) => {
+            .map((comment, index) => {
+              if (index % 50 === 0) {
+                console.log("[comments] heartbeat: extraction progress", Date.now() - started, {
+                  index,
+                  total: activeCommentsForIdExtraction.length
+                });
+              }
+
               const commentStart = Date.now();
               const nodeId = extractNodeId(comment);
               const commentMs = Date.now() - commentStart;
@@ -563,6 +572,8 @@ export default async function handler(
             .filter((nodeId) => Boolean(nodeId))
         )
       );
+
+      console.log("[comments] heartbeat: extraction loop finished", Date.now() - started);
       console.log("[comments] pre-file-fetch: node id extraction", Date.now() - started, {
         stageMs: Date.now() - idExtractionStart,
         uniqueNodeIds: uniqueNodeIds.length,
